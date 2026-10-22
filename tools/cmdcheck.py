@@ -234,6 +234,62 @@ T = {
     'dxf_resave_japanese': [('put', 'tests/io/ext_r2007.dxf', 'ext_r2007.dxf'), ('arg', 'ext_r2007.dxf'), ('wait', 2000),
                             ('menu', 'ファイル'), ('L', (95, 255)), ('wait', 3000), ('L', (412, 131)), ('wait', 1500),
                             ('text', '再保存'), ('L', (295, 290)), ('wait', 4000), ('shot', 'saved')],
+    # ---- drawing, checked by what the saved DXF holds ----
+    'dxf_baseline': [('dxf', 'BASE')],
+    'd_line': [('btn', '／'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': 1})],
+    'd_rect': [('btn', '□'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': 4})],
+    'd_circle': [('btn', '○'), ('L', 'empty3'), ('L', (300, 300)), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'CIRCLE': 1})],
+    'd_point': [('btn', '点'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'POINT': 2})],
+    'd_text': [('btn', '文字'), ('text', 'ABC123'), ('L', 'empty1'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'TEXT': 1})],
+    'd_erase': [('btn', '消去'), ('L', 'wall_bottom'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': -1})],
+    'd_undo': [('btn', '／'), ('L', 'empty1'), ('L', 'empty2'), ('btn', '戻る'), ('wait', 500), ('shot', 'drawn'),
+               ('dxf', 'OUT'), ('expect', {'LINE': 0})],
+    'd_double_line': [('btn', '2線'), ('L', 'wall_bottom'), ('L', (420, 620)), ('L', (600, 620)), ('shot', 'drawn'),
+                      ('dxf', 'OUT'), ('expect', {'LINE': 2})],
+    'd_center_line': [('btn', '中心線'), ('L', 'wall_left'), ('L', (625, 510)), ('L', (500, 300)), ('L', (500, 640)),
+                      ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': 1})],
+    'd_chain_line': [('btn', '連線'), ('L', 'empty1'), ('L', 'empty2'), ('L', 'empty3'), ('shot', 'drawn'),
+                     ('dxf', 'OUT'), ('expect', {'LINE': 2})],
+    # 寸法: 引出線の始点, 寸法線の位置, then the two ends.
+    'd_dimension': [('btn', '寸法'), ('L', (500, 650)), ('L', (500, 610)), ('L', (380, 640)), ('L', (620, 640)),
+                    ('shot', 'drawn'),
+                    ('dxf', 'OUT'), ('expect_gt', {'LINE': 0}), ('expect', {'TEXT': 1})],
+    # 複線: (L) on the line asks for the spacing afterwards; (R) uses the value
+    # in the box (前回値), which is what was typed.
+    'd_offset': [('btn', '複線'), ('text', '1000'), ('key', 13), ('R', 'wall_bottom'), ('shot', 'picked'),
+                 ('L', (500, 640)), ('shot', 'drawn'),
+                 ('dxf', 'OUT'), ('expect', {'LINE': 1})],
+    'd_polygon': [('btn', '多角形'), ('L', 'empty2'), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': 5})],
+    'd_copy': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', '複写'), ('wait', 800),
+               ('L', (250, 250)), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'LINE': 100})],
+    'd_move': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', '移動'), ('wait', 800),
+               ('L', (250, 250)), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'LINE': 0}),
+               ('expect_diff',)],
+    'd_trim': [('btn', '伸縮'), ('L', (600, 558)), ('L', (700, 558)), ('wait', 800), ('shot', 'drawn'), ('dxf', 'OUT'),
+               ('expect_diff',)],
+    'd_corner': [('btn', '／'), ('L', (150, 200)), ('L', (300, 200)), ('L', (350, 150)), ('L', (350, 300)),
+                 ('btn', 'コーナー'), ('L', (200, 200)), ('L', (350, 250)), ('wait', 800), ('shot', 'drawn'),
+                 ('dxf', 'OUT'), ('expect', {'LINE': 2}), ('expect_diff',)],
+    # Two lines meeting at a corner in the empty area, for 面取/コーナー-like commands.
+    'd_chamfer': [('btn', '／'), ('L', (150, 200)), ('L', (350, 200)), ('L', (350, 200)), ('L', (350, 400)),
+                  ('btn', '面取'), ('L', (250, 200)), ('L', (350, 300)), ('wait', 800), ('shot', 'drawn'),
+                  ('dxf', 'OUT'), ('expect', {'LINE': 3})],
+    'd_divide': [('btn', '／'), ('L', (150, 200)), ('L', (450, 200)), ('btn', '分割'), ('L', (300, 200)), ('L', (300, 200)),
+                 ('wait', 800), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_diff',)],
+    # 接線, 点→円: a point, then the circle.
+    'd_tangent_circle': [('btn', '○'), ('L', (250, 250)), ('L', (300, 250)), ('btn', '接線'), ('L', (130, 88)),
+                         ('L', (500, 150)), ('L', (300, 250)), ('wait', 800), ('shot', 'drawn'), ('dxf', 'OUT'),
+                         ('expect', {'CIRCLE': 1}), ('expect_gt', {'LINE': 0})],
+    # 消去: (L) on a line is 部分消し (then its two ends), (R) erases it whole.
+    'd_partial_erase': [('btn', '／'), ('L', (150, 200)), ('L', (450, 200)), ('btn', '消去'), ('L', (300, 200)),
+                        ('L', (200, 200)), ('L', (400, 200)), ('wait', 800), ('shot', 'drawn'),
+                        ('dxf', 'OUT'), ('expect', {'LINE': 2})],
+    # ハッチ: the lines of the outline in turn, the first one again to close it, then 実行.
+    'd_hatch': [('btn', '□'), ('L', (150, 150)), ('L', (350, 300)), ('btn', 'ハッチ'), ('L', (150, 200)), ('L', (250, 150)),
+                ('L', (350, 250)), ('L', (250, 300)), ('L', (150, 200)), ('wait', 500), ('shot', 'picked'),
+                ('L', (52, 88)), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'LINE': 4})],
+    'd_auto': [('btn', 'AUTO'), ('L', 'empty1'), ('L', 'empty2'), ('wait', 500), ('shot', 'drawn'), ('dxf', 'OUT'),
+               ('expect_diff',)],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],
@@ -267,6 +323,47 @@ T = {
 }
 
 
+# ('dxf', name): ファイル → DXF形式で保存 → 新規 → name → OK, so that what the
+# test drew can be counted.  Expanded into ordinary steps here.
+def expand(steps):
+    out = []
+    for st in steps:
+        if st[0] == 'dxf':
+            # (No ESC first: in Jw_cad ESC is 戻る and would undo what was just drawn.)
+            out += [('wait', 300), ('menu', 'ファイル'), ('L', (95, 255)), ('wait', 3000),
+                    ('L', (412, 131)), ('wait', 1500), ('text', st[1]), ('L', (295, 290)), ('wait', 5000)]
+        else:
+            out.append(st)
+    return out
+
+
+# Entities in a DXF's ENTITIES section, by type.
+def dxf_counts(path):
+    import collections
+    lines = open(path, 'rb').read().decode('cp932', 'replace').splitlines()
+    codes, values = lines[0::2], lines[1::2]
+    counts = collections.Counter()
+    in_entities = False
+    prev = None
+    for code, value in zip(codes, values):
+        code, value = code.strip(), value.strip()
+        if code == '2' and prev == 'SECTION':
+            in_entities = value == 'ENTITIES'
+        if code == '0':
+            if in_entities and value not in ('SECTION', 'ENDSEC', 'EOF', 'SEQEND', 'VERTEX'):
+                counts[value] += 1
+            prev = value
+    return dict(counts)
+
+
+BASELINE = os.path.join(OUT, '_baseline_counts.txt')
+
+
+def baseline():
+    with open(BASELINE, encoding='utf-8') as f:
+        return eval(f.read())
+
+
 def script_for(name, steps, outdir):
     lines = []
     t = 1500  # on the program's clock (see HeadlessHost), so the drawing is open by then
@@ -277,9 +374,19 @@ def script_for(name, steps, outdir):
         lines.append(f'{t} {s}')
         t += dt
 
+    last = [None]
+
     def click(p, button=0, count=1):
         x, y = pt(p)
+        # Get there the way a hand does, in several moves: some of Jw_cad's
+        # steps (2線's side, 中心線's direction) wait for the mouse to move
+        # after a click, and one jump straight onto the next click is not that.
+        if last[0]:
+            x0, y0 = last[0]
+            for k in range(1, 5):
+                add(f'move {x0 + (x - x0) * k // 5} {y0 + (y - y0) * k // 5}', 30)
         add(f'move {x} {y}', 60)
+        last[0] = (x, y)
         for _ in range(count):
             add(f'down {x} {y} {button}', 40)
             add(f'up {x} {y} {button}', 120)
@@ -336,7 +443,7 @@ def run_test(name, drive):
     outdir = os.path.join(OUT, name)
     shutil.rmtree(outdir, ignore_errors=True)
     os.makedirs(outdir)
-    script, end = script_for(name, T[name], outdir)
+    script, end = script_for(name, expand(T[name]), outdir)
     sp = os.path.join(outdir, 'script.txt')
     with open(sp, 'w', encoding='utf-8') as f:
         f.write(script)
@@ -374,9 +481,43 @@ def run_test(name, drive):
     err = p.stderr.decode('utf-8', 'replace')
     with open(os.path.join(outdir, 'log.txt'), 'w', encoding='utf-8') as f:
         f.write(err)
+    # ('dxf', name) then ('expect', {type: change}) / ('expect_diff',): what the
+    # saved drawing holds against the baseline (the same drawing saved untouched).
+    checks = []
+    for st in T[name]:
+        if st[0] != 'dxf':
+            continue
+        saved = os.path.join(c, 'jww', st[1] + '.dxf')
+        if not os.path.exists(saved):
+            checks.append(f'no {st[1]}.dxf was saved')
+            continue
+        shutil.copy(saved, os.path.join(outdir, st[1] + '.dxf'))
+        counts = dxf_counts(saved)
+        with open(os.path.join(outdir, 'counts.txt'), 'w', encoding='utf-8') as f:
+            f.write(repr(counts))
+        if name == 'dxf_baseline':
+            with open(BASELINE, 'w', encoding='utf-8') as f:
+                f.write(repr(counts))
+            continue
+        base = baseline()
+        delta = {k: counts.get(k, 0) - base.get(k, 0) for k in set(counts) | set(base)}
+        delta = {k: v for k, v in delta.items() if v}
+        for e in T[name]:
+            if e[0] == 'expect':
+                for k, v in e[1].items():
+                    if delta.get(k, 0) != v:
+                        checks.append(f'{k}: expected {v:+d}, got {delta.get(k, 0):+d} (all changes: {delta})')
+            elif e[0] == 'expect_gt':
+                for k, v in e[1].items():
+                    if not delta.get(k, 0) > v:
+                        checks.append(f'{k}: expected more than {v:+d}, got {delta.get(k, 0):+d} (all changes: {delta})')
+            elif e[0] == 'expect_diff':
+                body = lambda p: open(p, 'rb').read().split(b'ENTITIES', 1)[-1]
+                if body(saved) == body(os.path.join(OUT, 'dxf_baseline', 'BASE.dxf')):
+                    checks.append('the drawing did not change')
     if not os.environ.get('KEEP_C'):
         shutil.rmtree(c, ignore_errors=True)
-    problems = []
+    problems = list(checks)
     if p.returncode != 0:
         problems.append(f'exit {p.returncode}')
     for line in err.splitlines():
@@ -426,6 +567,8 @@ def main():
     shutil.rmtree(drive, ignore_errors=True)
     shutil.copytree(os.path.join(ROOT, 'orig'), os.path.join(drive, 'jww'))
     jobs = int(os.environ.get('JOBS', '4'))
+    if any(st[0] == 'dxf' for n in names for st in T[n]) and 'dxf_baseline' not in names:
+        print(*run_test('dxf_baseline', drive))
     try:
         with ThreadPoolExecutor(jobs) as ex:
             results = list(ex.map(lambda n: run_test(n, drive), names))
