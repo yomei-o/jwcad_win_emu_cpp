@@ -66,9 +66,11 @@ try {
   await send('Page.enable');
   await send('Runtime.enable');
   await send('Emulation.setDeviceMetricsOverride', {width: 1280, height: 800, deviceScaleFactor: 1, mobile: false});
-  await send('Page.navigate', {url: 'http://127.0.0.1:' + port + '/'});
-  await sleep(2000);
-  check(await ev('window.crossOriginIsolated'), 'cross-origin isolated');
+  await send('Page.navigate', {url: process.env.URL || ('http://127.0.0.1:' + port + '/')});
+  // On GitHub Pages the first load installs coi-sw.js and reloads once.
+  let isolated = false;
+  for (let i = 0; i < 40 && !isolated; i++) { await sleep(500); isolated = !!(await ev('window.crossOriginIsolated')); }
+  check(isolated, 'cross-origin isolated');
   await sleep(10000);
   await shot('web_start.png');
   console.log('status: ' + await ev("document.getElementById('status').textContent"));
