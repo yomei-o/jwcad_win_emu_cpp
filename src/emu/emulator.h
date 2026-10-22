@@ -316,6 +316,10 @@ public:
     // it.  stdcall_bytes is how many argument bytes the callee pops, which only
     // matters for 32-bit stdcall functions (the Win32 API); pass 0 for cdecl.
     uint64_t add_hook(std::string name, int stdcall_bytes, std::function<void(Emulator&)> fn);
+    // The same, but a hook already registered under the name is replaced (at
+    // the same address).  For a layer that answers differently from the
+    // generic one - the GUI's narrow "A" functions read code page 932.
+    uint64_t replace_hook(std::string name, int stdcall_bytes, std::function<void(Emulator&)> fn);
     // Looks up a hook for an imported symbol, creating a "not implemented"
     // stub if there is none, so that an unknown import only fails if it is
     // actually called.

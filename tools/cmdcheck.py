@@ -65,6 +65,8 @@ def pt(p):
 #   ('key', vk) / ('text', s)
 #   ('wait', ms)
 #   ('shot', label)         a screenshot, as <test>/<n>_<label>.png
+# Every sample drawing through ファイル一括変換 to one format.
+ALL_SAMPLES = '"@2Dxf.jww" "Test1.jww" "Test2.jww" "Test3.jww" "Test4.jww" "Test5.jww" "Test6.jww" "Test7.jww" "サンプル.jww" "天空率表.jww" "敷地図.jww" "日影図.jww" "木造平面例.jww" "Ａマンション25d.jww" "Ａマンション平面例.jww" "Ａマンション立面例.jww"'
 T = {
     # ---- drawing ----
     'point': [('btn', '点'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'done')],
@@ -190,6 +192,20 @@ T = {
     'text_file_read': [('put', 'tests/io/memo.txt', 'memo.txt'), ('btn', '文字'), ('wait', 800), ('L', (719, 88)), ('wait', 2500),
                        ('shot', 'dlg'), ('text', 'memo.txt'), ('key', 13), ('wait', 2500), ('shot', 'chosen'),
                        ('L', (200, 250)), ('wait', 2000), ('shot', 'placed')],
+    'batch_all_jwc': [('allow_msgbox',), ('menu', 'ファイル'), ('L', (95, 339)), ('wait', 800), ('L', (369, 427)), ('wait', 3000),
+                      ('L', (688, 511)), ('text', ALL_SAMPLES), ('key', 13), ('wait', 3000), ('L', (528, 393)),
+                      ('L', (637, 280)), ('wait', 120000), ('shot', 'done')],
+    'batch_all_dxf': [('allow_msgbox',), ('menu', 'ファイル'), ('L', (95, 339)), ('wait', 800), ('L', (369, 427)), ('wait', 3000),
+                      ('L', (688, 511)), ('text', ALL_SAMPLES), ('key', 13), ('wait', 3000), ('L', (528, 417)),
+                      ('L', (637, 280)), ('wait', 120000), ('shot', 'done')],
+    'batch_all_sfc': [('allow_msgbox',), ('menu', 'ファイル'), ('L', (95, 339)), ('wait', 800), ('L', (369, 427)), ('wait', 3000),
+                      ('L', (688, 511)), ('text', ALL_SAMPLES), ('key', 13), ('wait', 3000), ('L', (528, 441)),
+                      ('L', (637, 280)), ('wait', 120000), ('shot', 'done')],
+    'batch_all_p21': [('allow_msgbox',), ('menu', 'ファイル'), ('L', (95, 339)), ('wait', 800), ('L', (369, 427)), ('wait', 3000),
+                      ('L', (688, 511)), ('text', ALL_SAMPLES), ('key', 13), ('wait', 3000), ('L', (528, 465)),
+                      ('L', (637, 280)), ('wait', 120000), ('shot', 'done')],
+    'open_sfc_japanese': [('put', 'tests/io/T_sfc.sfc', '日本語の図面.sfc'), ('arg', '日本語の図面.sfc'), ('wait', 4000), ('shot', 'opened')],
+    'open_p21_japanese': [('put', 'tests/io/T_p21.p21', '日本語の図面.p21'), ('arg', '日本語の図面.p21'), ('wait', 6000), ('shot', 'opened')],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],

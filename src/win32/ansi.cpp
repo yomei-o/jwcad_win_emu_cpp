@@ -745,6 +745,102 @@ void install_ansi(Emulator& e) {
     });
     api(e, "CLSIDFromString", 2, [](Emulator& e) { ret(e, 0x800401F3); });  // CO_E_CLASSSTRING
     api(e, "CLSIDFromProgID", 2, [](Emulator& e) { ret(e, 0x800401F3); });
+
+    // ---- file names ---------------------------------------------------------------
+    // The emulator core has these "A" functions too, reading the bytes as
+    // UTF-8 - right for its console guests, wrong here: the SXF libraries
+    // (common_lib*.dll) pass Shift-JIS paths, and saving 「サンプル.sfc」 wrote
+    // its data to a file with a garbled name.  They are replaced, not added.
+    auto replace = [](Emulator& e, const char* name, int nargs, std::function<void(Emulator&)> fn) {
+        e.replace_hook(name, e.is64() ? 0 : nargs * 4, std::move(fn));
+    };
+    auto replace_forward = [replace](Emulator& e, const char* aname, const char* wname, int nargs, std::vector<int> strings) {
+        std::string w = wname;
+        replace(e, aname, nargs, [w, nargs, strings](Emulator& e) {
+            std::vector<uint64_t> args;
+            std::vector<std::unique_ptr<WideArg>> keep;
+            for (int i = 0; i < nargs; ++i) {
+                uint64_t v = A(e, i);
+                if (std::find(strings.begin(), strings.end(), i) != strings.end()) {
+                    keep.push_back(std::make_unique<WideArg>(e, v));
+                    v = keep.back()->addr;
+                }
+                args.push_back(v);
+            }
+            ret(e, call_w(e, w.c_str(), args));
+        });
+    };
+    replace_forward(e, "CreateFileA", "CreateFileW", 7, {0});
+    replace_forward(e, "DeleteFileA", "DeleteFileW", 1, {0});
+    replace_forward(e, "GetFileAttributesA", "GetFileAttributesW", 1, {0});
+    replace_forward(e, "CreateDirectoryA", "CreateDirectoryW", 2, {0});
+    replace_forward(e, "RemoveDirectoryA", "RemoveDirectoryW", 1, {0});
+    replace_forward(e, "SetCurrentDirectoryA", "SetCurrentDirectoryW", 1, {0});
+    // (size, buffer) -> length
+    for (auto [a, w] : {std::pair<const char*, const char*>{"GetTempPathA", "GetTempPathW"},
+                        {"GetCurrentDirectoryA", "GetCurrentDirectoryW"}}) {
+        std::string wn = w;
+        replace(e, a, 2, [wn](Emulator& e) {
+            WideOut out(e, 1024);
+            if (!call_w(e, wn.c_str(), {1024, out.addr})) return ret(e, 0);
+            int n = static_cast<int>(out.text().size());
+            if (!A(e, 1) || I(e, 0) <= n) return ret(e, static_cast<uint64_t>(n + 1));
+            ret(e, static_cast<uint64_t>(out.store(A(e, 1), I(e, 0))));
+        });
+    }
+    replace(e, "GetModuleFileNameA", 3, [](Emulator& e) {
+        WideOut out(e, 1024);
+        if (!call_w(e, "GetModuleFileNameW", {A(e, 0), out.addr, 1024})) return ret(e, 0);
+        ret(e, static_cast<uint64_t>(out.store(A(e, 1), I(e, 2))));
+    });
+    replace(e, "GetFullPathNameA", 4, [](Emulator& e) {
+        // (name, size, buffer, char** file part)
+        WideArg name(e, A(e, 0));
+        WideOut out(e, 1024);
+        if (!call_w(e, "GetFullPathNameW", {name.addr, 1024, out.addr, 0})) return ret(e, 0);
+        std::string full = out.text();
+        if (!A(e, 2) || I(e, 1) <= static_cast<int>(full.size())) return ret(e, full.size() + 1);
+        int n = out.store(A(e, 2), I(e, 1));
+        if (A(e, 3)) {
+            // After the last separator, stepping over Shift-JIS double bytes
+            // (a trail byte can be 0x5C).
+            size_t part = 0;
+            for (size_t i = 0; i < full.size(); ++i) {
+                unsigned char c = static_cast<unsigned char>(full[i]);
+                if ((c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC)) {
+                    ++i;
+                    continue;
+                }
+                if (c == '\\' || c == '/') part = i + 1;
+            }
+            e.mem.write32(A(e, 3), part < full.size() ? static_cast<uint32_t>(A(e, 2) + part) : 0);
+        }
+        ret(e, static_cast<uint64_t>(n));
+    });
+    // WIN32_FIND_DATAW (592 bytes) -> WIN32_FIND_DATAA (320): 44 bytes the
+    // same, then cFileName[260] and cAlternateFileName[14].
+    auto find_data_w_to_a = [](Emulator& e, uint64_t w, uint64_t a) {
+        for (int i = 0; i < 44; i += 4) e.mem.write32(a + i, e.mem.read32(w + i));
+        std::string name = utf16_to_cp932(read_wstr(e, w + 44, 260)).substr(0, 259);
+        std::string alt = utf16_to_cp932(read_wstr(e, w + 44 + 520, 14)).substr(0, 13);
+        e.mem.write(a + 44, name.c_str(), name.size() + 1);
+        e.mem.write(a + 44 + 260, alt.c_str(), alt.size() + 1);
+    };
+    replace(e, "FindFirstFileA", 2, [find_data_w_to_a](Emulator& e) {
+        WideArg name(e, A(e, 0));
+        uint64_t fd = e.heap_alloc(592);
+        uint64_t h = call_w(e, "FindFirstFileW", {name.addr, fd});
+        if (h != 0xFFFFFFFFull) find_data_w_to_a(e, fd, A(e, 1));
+        e.heap_free(fd);
+        ret(e, h);
+    });
+    replace(e, "FindNextFileA", 2, [find_data_w_to_a](Emulator& e) {
+        uint64_t fd = e.heap_alloc(592);
+        uint64_t ok = call_w(e, "FindNextFileW", {A(e, 0), fd});
+        if (ok) find_data_w_to_a(e, fd, A(e, 1));
+        e.heap_free(fd);
+        ret(e, ok);
+    });
 }
 
 }  // namespace x86emu::win32

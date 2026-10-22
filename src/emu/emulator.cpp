@@ -129,6 +129,15 @@ uint64_t Emulator::add_hook(std::string name, int stdcall_bytes,
     return addr;
 }
 
+uint64_t Emulator::replace_hook(std::string name, int stdcall_bytes, std::function<void(Emulator&)> fn) {
+    auto it = hook_by_name_.find(name);
+    if (it == hook_by_name_.end()) return add_hook(std::move(name), stdcall_bytes, std::move(fn));
+    Hook& h = hooks_[static_cast<size_t>((it->second - hook_base_) / kHookStride)];
+    h.stdcall_bytes = stdcall_bytes;
+    h.fn = std::move(fn);
+    return it->second;
+}
+
 uint64_t Emulator::resolve_import(const std::string& dll, const std::string& symbol) {
     // Which C runtime the guest links against changes observable formatting, so
     // note it while the DLL name is in front of us.
