@@ -24,20 +24,37 @@ using namespace x86emu::win32;
 
 // Ring layout (Int32 slots): [0] events written, [1] events read,
 // [16 + 8*i ...] event i: type, x, y, button, key, mods, delta/ch, w|h.
+// Event types 100 and up are file operations from the page (the file panel):
+// they are carried out here, in JS, while the guest waits, and never reach the
+// emulator.  worker.js supplies Module.jwFileOp.
 EM_JS(int, js_wait_event, (int timeout_ms, int* out), {
     const ev = Module.jwEvents;
     const SLOTS = 8, BASE = 16, N = ((ev.length - BASE) / SLOTS) | 0;
-    let w = Atomics.load(ev, 0), r = Atomics.load(ev, 1);
-    if (w === r) {
-        if (timeout_ms === 0) return 0;
-        Atomics.wait(ev, 0, w, timeout_ms < 0 ? Infinity : timeout_ms);
-        w = Atomics.load(ev, 0);
-        if (w === r) return 0;
+    const deadline = timeout_ms < 0 ? Infinity : Date.now() + timeout_ms;
+    for (;;) {
+        let w = Atomics.load(ev, 0), r = Atomics.load(ev, 1);
+        if (w === r) {
+            const left = deadline - Date.now();
+            if (timeout_ms === 0 || left <= 0) return 0;
+            Atomics.wait(ev, 0, w, left === Infinity ? Infinity : left);
+            w = Atomics.load(ev, 0);
+            if (w === r) {
+                if (Date.now() >= deadline) return 0;
+                continue;
+            }
+        }
+        const at = BASE + (r % N) * SLOTS;
+        const type = ev[at];
+        if (type >= 100) {
+            const slot = Array.from(ev.subarray(at, at + SLOTS));
+            Atomics.store(ev, 1, r + 1);
+            try { if (Module.jwFileOp) Module.jwFileOp(slot); } catch (e) { console.log('file op failed', e); }
+            continue;
+        }
+        for (let i = 0; i < SLOTS; i++) HEAP32[(out >> 2) + i] = ev[at + i];
+        Atomics.store(ev, 1, r + 1);
+        return 1;
     }
-    const at = BASE + (r % N) * SLOTS;
-    for (let i = 0; i < SLOTS; i++) HEAP32[(out >> 2) + i] = ev[at + i];
-    Atomics.store(ev, 1, r + 1);
-    return 1;
 });
 
 EM_JS(void, js_present, (const uint8_t* rgba, int w, int h), {
@@ -150,7 +167,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE int jwemu_main(int w, int h) {
         js_status("exited");
         return code;
     } catch (const std::exception& err) {
-        std::string msg = std::string("jwemu: ") + err.what() + "\n" + emu.stack_trace(12);
+        std::string msg = std::string("jwemu: ") + err.what() + "\n" + (emu.has_cpu() ? emu.stack_trace(12) : std::string());
         std::fprintf(stderr, "%s\n", msg.c_str());
         js_status(msg.c_str());
         return 1;

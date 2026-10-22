@@ -7,9 +7,12 @@
 namespace x86emu {
 
 std::vector<uint8_t> read_file(const std::string& path) {
-    // Through the same translation every guest file access takes, so that a
-    // program named as "C:\dir\prog.exe" loads on a Unix host too.
-    std::FILE* fp = std::fopen(FileTable::host_path(path).c_str(), "rb");
+    // As given first (a host path), then through the translation every guest
+    // file access takes, so that "C:\dir\prog.exe" also works where C: is
+    // mapped (or is a "/C:" directory on a Unix host).  Translating a host path
+    // that already starts with C: would map it a second time.
+    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    if (!fp) fp = std::fopen(FileTable::host_path(path).c_str(), "rb");
     if (!fp) throw LoadError("cannot open " + path);
     std::fseek(fp, 0, SEEK_END);
     long size = std::ftell(fp);

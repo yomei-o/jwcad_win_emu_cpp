@@ -343,10 +343,21 @@ void Cpu::execute_x87(uint8_t op) {
                     st[st_top] = std::atan2(st[st_top], x);
                     return;
                 }
-                case 0xF8: {  // FPREM
-                    double b = fpu_reg(1);
-                    st[st_top] = std::fmod(st[st_top], b);
+                case 0xF8:    // FPREM: truncating quotient
+                case 0xF5: {  // FPREM1: round-to-nearest quotient (IEEE remainder)
+                    // Done in one step, so C2 ("incomplete") is always clear;
+                    // the quotient's low three bits go to C0, C3 and C1, which
+                    // argument-reduction code reads as the octant.
+                    double a = st[st_top], b = fpu_reg(1);
+                    double q = modrm == 0xF8 ? std::trunc(a / b) : std::nearbyint(a / b);
+                    st[st_top] = modrm == 0xF8 ? std::fmod(a, b) : std::remainder(a, b);
                     clear_cc();
+                    if (std::isfinite(q)) {
+                        uint64_t qi = static_cast<uint64_t>(std::fabs(std::fmod(q, 8.0)));
+                        if (qi & 1) fpu_status |= SW_C1;
+                        if (qi & 2) fpu_status |= SW_C3;
+                        if (qi & 4) fpu_status |= SW_C0;
+                    }
                     return;
                 }
                 case 0xFA: st[st_top] = std::sqrt(st[st_top]); return;    // FSQRT

@@ -494,7 +494,19 @@ uint64_t Emulator::call_guest(uint64_t func, const std::vector<uint64_t>& args) 
     cpu_->rip = func;
     cpu_->halted = false;
 
-    while (!cpu_->halted && cpu_->rip != nested_return_) cpu_->step();
+    // A genuine return leaves the stack pointer just above the return address,
+    // plus whatever a callee-pops convention removed.  Anything further up is
+    // a return into an outer call_guest() (see NestedReturn).
+    const uint64_t frame_limit = rsp + 8 * args.size() + 64;
+    for (;;) {
+        try {
+            while (!cpu_->halted && cpu_->rip != nested_return_) cpu_->step();
+        } catch (const NestedReturn& nr) {
+            if (nr.rsp > frame_limit) throw;
+        }
+        if (cpu_->halted || cpu_->regs[RSP] <= frame_limit) break;
+        throw NestedReturn{cpu_->regs[RSP]};
+    }
     uint64_t result = cpu_->regs[RAX];
     bool guest_exited = cpu_->halted;
     int code = cpu_->exit_code;

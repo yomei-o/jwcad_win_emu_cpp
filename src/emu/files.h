@@ -203,6 +203,11 @@ public:
     // toolchain, which has /usr baked into every search path, run from a
     // directory of unpacked packages.  Empty (the default) means no remapping.
     static void set_sysroot(std::string dir);
+    // Where a Windows guest's C: drive lives on the host, when it is not the
+    // host's own C: (the native front end points it at a folder, so the guest
+    // sees the same drive as in the browser).  Empty: no mapping.
+    static void set_drive_c(std::string dir);
+    static const std::string& drive_c();
 
     // Every open descriptor, for a caller that has to write the table down and
     // build it again later.  A host stream cannot cross to another host, but

@@ -524,6 +524,65 @@ void install_ansi(Emulator& e) {
     api(e, "SendNotifyMessageA", 4, [](Emulator& e) { ret(e, call_w(e, "SendNotifyMessageW", {A(e, 0), A(e, 1), A(e, 2), A(e, 3)})); });
     api(e, "MapVirtualKeyExA", 3, [](Emulator& e) { ret(e, call_w(e, "MapVirtualKeyW", {A(e, 0), A(e, 1)})); });
     api(e, "GetMenuBarInfo", 4, [](Emulator& e) { ret(e, 0); });
+
+    // SendMessageA: the messages that carry text carry it in code page 932.
+    // MFC's dialog initialisation (RT_DLGINIT) fills combo boxes this way even
+    // in a Unicode program, so passing the bytes through as UTF-16 put "*.jww"
+    // into Jw_cad's file dialog as three garbage characters.
+    auto send_a = [](Emulator& e, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t lp) -> uint64_t {
+        Gui& g = gui(e);
+        Window* w = g.win(hwnd);
+        if (!w) return 0;
+        bool owner_list = false;
+        if (w->cls && (w->cls->name == u"COMBOBOX" || w->cls->name == u"LISTBOX" || w->cls->name == u"COMBOLBOX")) {
+            bool od = (w->style & 0x30) != 0;
+            bool has = w->cls->name == u"COMBOBOX" ? (w->style & 0x200) != 0 : (w->style & 0x40) != 0;
+            owner_list = od && !has;
+        }
+        switch (msg) {
+            case 0x000C:  // WM_SETTEXT
+            case 0x00C2:  // EM_REPLACESEL
+            case 0x0143: case 0x014A: case 0x014C: case 0x0158: case 0x014D: case 0x0145:  // CB_*STRING, CB_DIR
+            case 0x0180: case 0x0181: case 0x018F: case 0x01A2: case 0x018C: case 0x018D: {  // LB_*STRING, LB_DIR
+                if (owner_list && msg != 0x000C) break;
+                WideArg s(e, lp);
+                return g.send(hwnd, msg, wp, s.addr);
+            }
+            case 0x000D: {  // WM_GETTEXT: wp is the buffer size in bytes
+                WideOut out(e, static_cast<int>(wp ? wp : 1));
+                g.send(hwnd, msg, wp, out.addr);
+                return static_cast<uint64_t>(out.store(lp, static_cast<int>(wp)));
+            }
+            case 0x000E: {  // WM_GETTEXTLENGTH, in bytes
+                uint64_t n = g.send(hwnd, msg, 0, 0);
+                WideOut out(e, static_cast<int>(n + 1));
+                g.send(hwnd, 0x000D, n + 1, out.addr);
+                return out.text().size();
+            }
+            case 0x0148: case 0x0189: {  // CB_GETLBTEXT / LB_GETTEXT
+                if (owner_list) break;
+                uint64_t n = g.send(hwnd, msg == 0x0148 ? 0x0149 : 0x018A, wp, 0);
+                if (static_cast<int32_t>(n) < 0) return n;
+                WideOut out(e, static_cast<int>(n + 1));
+                g.send(hwnd, msg, wp, out.addr);
+                return static_cast<uint64_t>(out.store(lp, 1 << 16));
+            }
+            case 0x0149: case 0x018A: {  // ..TEXTLEN, in bytes
+                if (owner_list) break;
+                uint64_t n = g.send(hwnd, msg, wp, 0);
+                if (static_cast<int32_t>(n) < 0) return n;
+                WideOut out(e, static_cast<int>(n + 1));
+                g.send(hwnd, msg == 0x0149 ? 0x0148 : 0x0189, wp, out.addr);
+                return out.text().size();
+            }
+        }
+        return g.send(hwnd, msg, wp, lp);
+    };
+    api(e, "SendMessageA", 4, [send_a](Emulator& e) { ret(e, send_a(e, U(e, 0), U(e, 1), A(e, 2), A(e, 3))); });
+    api(e, "SendDlgItemMessageA", 5, [send_a](Emulator& e) {
+        uint64_t h = e.call_guest(e.existing_hook("GetDlgItem"), {A(e, 0), A(e, 1)}) & 0xFFFFFFFF;
+        ret(e, h ? send_a(e, static_cast<uint32_t>(h), U(e, 2), A(e, 3), A(e, 4)) : 0);
+    });
     // The printf family of user32.  wsprintf is variadic and so cdecl; the
     // wv- forms take a va_list and are stdcall like everything else.
     auto wsprintf_core = [](Emulator& e, uint64_t dst, uint64_t fmt, Emulator::Args& va, bool wide) -> uint64_t {

@@ -23,6 +23,26 @@
 namespace x86emu {
 namespace {
 
+// A host directory inside a mapped C: drive, as the guest spells it.
+std::string guest_view(std::string host) {
+    const std::string& c = FileTable::drive_c();
+    std::string norm = host;
+    for (char& ch : norm)
+        if (ch == '\\') ch = '/';
+    if (c.empty() || norm.size() < c.size()) return host;
+    auto lower = [](std::string s) {
+        for (char& ch : s)
+            if (ch >= 'A' && ch <= 'Z') ch = static_cast<char>(ch + 32);
+        return s;
+    };
+    if (lower(norm.substr(0, c.size())) != lower(c)) return host;
+    if (norm.size() > c.size() && norm[c.size()] != '/') return host;
+    std::string rest = norm.substr(c.size());
+    for (char& ch : rest)
+        if (ch == '/') ch = '\\';
+    return "C:" + (rest.empty() ? std::string("\\") : rest);
+}
+
 std::string current_directory() {
 #if defined(_WIN32)
     // Wide, then UTF-8: the narrow _getcwd answers in the ANSI code page, and
@@ -30,7 +50,7 @@ std::string current_directory() {
     // later conversion could rescue.
     wchar_t wbuf[4096];
     if (_wgetcwd(wbuf, 4096))
-        return utf16_string_to_utf8(std::u16string(wbuf, wbuf + wcslen(wbuf)));
+        return guest_view(utf16_string_to_utf8(std::u16string(wbuf, wbuf + wcslen(wbuf))));
 #else
     char buf[4096];
     if (getcwd(buf, sizeof buf)) {

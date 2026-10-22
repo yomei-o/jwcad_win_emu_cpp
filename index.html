@@ -6,48 +6,193 @@
 <title>Jw_cad on jwemu</title>
 <script src="coi-sw.js"></script>
 <style>
-  :root { --bg: #3a6ea5; --fg: #ffffff; --panel: rgba(0, 0, 0, 0.55); }
-  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
-               font-family: "Yu Gothic UI", "Meiryo", sans-serif; }
-  #screen { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated;
-            outline: none; cursor: default; display: block; }
-  #ime { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0;
-         resize: none; overflow: hidden; }
-  #status { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 16px 24px;
-            background: var(--panel); border-radius: 8px; font-size: 15px; max-width: min(90vw, 720px);
-            white-space: pre-wrap; text-align: center; }
-  #status.hidden { display: none; }
+:root {
+  --bg: #14161a;
+  --panel: #1c1f26;
+  --line: #2b303b;
+  --fg: #e6e8ec;
+  --dim: #9aa3b2;
+  --accent: #7cc4ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Noto Sans JP", sans-serif;
+}
+header {
+  display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+  padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+h1 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+h1 span { color: var(--dim); font-weight: 400; }
+label { color: var(--dim); }
+select, button {
+  font: inherit; color: var(--fg); background: #262b34;
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 10px;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+main { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 20px; }
+#screen-wrap { background: #000; border: 1px solid var(--line); border-radius: 4px; line-height: 0; position: relative; }
+canvas {
+  display: block; width: 1280px; max-width: calc(100vw - 44px); aspect-ratio: 8 / 5;
+  outline: none; cursor: default;
+}
+#ime { position: absolute; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; resize: none; }
+#status { min-height: 1.6em; color: var(--dim); }
+#status.err { color: #ff8a8a; white-space: pre-wrap; }
+.box {
+  width: 100%; max-width: 1280px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px;
+}
+.box.drop { border-color: var(--accent); }
+.box-head { color: var(--dim); margin-bottom: 6px; }
+.box-head span { font-size: 12px; }
+.bar { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+.bar .path { font: 13px/1.5 ui-monospace, monospace; color: var(--accent); }
+#files { width: 100%; border-collapse: collapse; }
+#files td { padding: 3px 8px 3px 0; border-top: 1px solid #22262e; }
+#files td.name { font: 13px/1.5 ui-monospace, monospace; word-break: break-all; }
+#files td.name a { color: var(--accent); text-decoration: none; cursor: pointer; }
+#files td.size, #files td.date { color: var(--dim); text-align: right; white-space: nowrap; font-size: 12px; }
+#files td.actions { white-space: nowrap; text-align: right; }
+#files td.actions button { margin-left: 4px; padding: 2px 7px; font-size: 12px; }
+#files tr.user td.name::after { content: " ●"; color: #ffcf6a; font-size: 10px; }
+#note { color: var(--dim); font-size: 12px; }
+#note.err { color: #ff8a8a; }
+.notes { max-width: 1280px; width: 100%; color: var(--dim); font-size: 13px; }
+.notes h2 { font-size: 13px; color: var(--fg); margin: 18px 0 6px; }
+.notes td { padding: 1px 14px 1px 0; vertical-align: top; }
+.notes kbd { background: #262b34; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px;
+             padding: 0 5px; font: 12px/1.5 ui-monospace, monospace; color: var(--fg); }
+.notes a { color: var(--accent); }
+.notes code { color: var(--fg); }
 </style>
 </head>
 <body>
-<canvas id="screen" tabindex="0"></canvas>
-<textarea id="ime" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
-<div id="status">読み込み中…</div>
+
+<header>
+  <h1>Jw_cad <span>on jwemu — Windows 版の exe をそのままブラウザで</span></h1>
+  <span>
+    <label for="upload-top">ファイルを入れる</label>
+    <input type="file" id="upload-top" multiple>
+  </span>
+  <button id="reset" title="入れたファイル・保存した図面・設定をこのブラウザから消して再起動">保存データを消す</button>
+</header>
+
+<main>
+  <div id="screen-wrap">
+    <canvas id="screen" tabindex="0" width="1280" height="800"></canvas>
+    <textarea id="ime" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+  </div>
+  <div id="status">読み込んでいます…</div>
+
+  <div class="box" id="filebox">
+    <div class="box-head">
+      ファイル <span>— Jw_cad から見える <code>C:\jww</code> の中身。ここへドラッグ＆ドロップしても入れられます。
+      ● は入れたもの・Jw_cad が保存したもの（このブラウザに残ります）</span>
+    </div>
+    <div class="bar">
+      <button id="up" disabled>上へ</button>
+      <span id="path" class="path">C:\jww</span>
+    </div>
+    <table id="files"></table>
+    <div class="bar">
+      <button id="add" disabled>ファイルを入れる</button>
+      <button id="mkdir" disabled>新規フォルダ</button>
+      <button id="refresh" disabled>更新</button>
+      <input type="file" id="upload" multiple hidden>
+    </div>
+    <div id="note"></div>
+  </div>
+
+  <div class="notes">
+    <h2>これは何か</h2>
+    <p>
+      Windows 版 <strong>Jw_cad 10.03.6</strong> の実行ファイル（<code>Jw_win.exe</code>）を、改造せずに
+      x86 エミュレータの中で動かしています。Windows の API（user32・gdi32 など）はエミュレータの側で
+      作り直したもので、コモンコントロールは <a href="https://www.winehq.org/">Wine</a> の comctl32.dll です。
+      ファイルはブラウザの中だけに置かれ、どこにも送信されません。
+    </p>
+    <h2>操作</h2>
+    <table>
+      <tr><td>左クリック / 右クリック</td><td>Jw_cad の (L) / (R)。右ボタンが無いときは <kbd>Ctrl</kbd>＋クリック</td></tr>
+      <tr><td>ホイール</td><td>拡大縮小（Jw_cad の設定どおり）</td></tr>
+      <tr><td>キーボード</td><td>画面をクリックしてから。日本語入力もそのまま使えます</td></tr>
+    </table>
+    <h2>ファイルの扱い</h2>
+    <p>
+      「ファイルを入れる」で手元の <code>.jww</code>・<code>.jws</code>・<code>.dxf</code>・テンプレートなどを
+      <code>C:\jww</code> に置けます。Jw_cad の「開く」で選べます。Jw_cad で保存した図面は数秒で一覧に
+      現れ、<strong>DL</strong> で手元に取り出せます。入れたファイルと保存した図面はブラウザの IndexedDB に
+      保存されるので、リロードしても消えません。
+    </p>
+    <h2>権利</h2>
+    <p>
+      Jw_cad の著作権は清水治郎・田中善文両氏にあります（使用条件は <code>C:\jww\Jw_win.txt</code>）。
+      comctl32.dll は Wine（LGPL）、フォントは IPAex（IPA フォントライセンス）ほか。詳しくは
+      <a href="https://github.com/yomei-o/jwcad_win_emu_cpp">リポジトリ</a>の README をご覧ください。
+    </p>
+  </div>
+</main>
+
 <script>
 'use strict';
-const statusEl = document.getElementById('status');
-const canvas = document.getElementById('screen');
-const ime = document.getElementById('ime');
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status'), canvas = $('screen'), ime = $('ime'), note = $('note');
+const ROOT = '/C:/jww';
+const SCREEN_W = 1280, SCREEN_H = 800;
 
-function say(text, keep) {
-  statusEl.textContent = text;
-  statusEl.classList.toggle('hidden', !text);
-  if (!keep && text) setTimeout(() => { if (statusEl.textContent === text) statusEl.classList.add('hidden'); }, 4000);
+function say(text, err) { statusEl.textContent = text; statusEl.classList.toggle('err', !!err); }
+function tell(text, err) { note.textContent = text; note.classList.toggle('err', !!err); }
+
+// ---- IndexedDB: the files the user added or Jw_cad saved ----------------------
+function openDb() {
+  return new Promise((ok, fail) => {
+    const r = indexedDB.open('jwemu', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('files', {keyPath: 'path'});
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => fail(r.error);
+  });
+}
+let dbp = null;
+const db = () => (dbp = dbp || openDb());
+async function dbAll() {
+  const d = await db();
+  return new Promise((ok) => { const r = d.transaction('files').objectStore('files').getAll(); r.onsuccess = () => ok(r.result || []); r.onerror = () => ok([]); });
+}
+async function dbPut(rec) {
+  const d = await db();
+  return new Promise((ok) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(rec); t.oncomplete = ok; t.onerror = ok; });
+}
+async function dbDelete(prefix) {
+  const d = await db();
+  const all = await dbAll();
+  return new Promise((ok) => {
+    const t = d.transaction('files', 'readwrite');
+    for (const r of all) if (r.path === prefix || r.path.startsWith(prefix + '/')) t.objectStore('files').delete(r.path);
+    t.oncomplete = ok; t.onerror = ok;
+  });
 }
 
 if (!window.crossOriginIsolated) {
-  say('このページは SharedArrayBuffer が必要です。\n自動で再読み込みします（数秒待っても進まなければ手動で再読み込みしてください）。', true);
+  say('このページは SharedArrayBuffer が必要です。自動で再読み込みします（進まなければ手動で再読み込みしてください）。');
 } else {
   start();
 }
 
-function start() {
-  // The event ring the worker reads: [0] written, [1] read, then 8 ints per event.
+async function start() {
+  // The event ring the worker reads: [0] written, [1] read, [2] file-op ack, then 8 ints per event.
   const SLOTS = 8, BASE = 16, N = 4096;
   const events = new Int32Array(new SharedArrayBuffer((BASE + SLOTS * N) * 4));
+  const PATH_BYTES = 1024, CHUNK = 4 << 20;
+  const mailbox = new Uint8Array(new SharedArrayBuffer(PATH_BYTES + CHUNK));
   function push(type, x, y, button, key, mods, extra, size) {
     const w = Atomics.load(events, 0), r = Atomics.load(events, 1);
-    if (w - r >= N) return;  // full: drop
+    if (w - r >= N) return;
     const at = BASE + (w % N) * SLOTS;
     events[at] = type; events[at + 1] = x | 0; events[at + 2] = y | 0; events[at + 3] = button | 0;
     events[at + 4] = key | 0; events[at + 5] = mods | 0; events[at + 6] = extra | 0; events[at + 7] = size | 0;
@@ -56,28 +201,79 @@ function start() {
   }
   const T = {MouseMove: 1, MouseDown: 2, MouseUp: 3, Wheel: 4, KeyDown: 5, KeyUp: 6, Char: 7, Resize: 8, Quit: 9};
 
-  const W = () => Math.max(640, window.innerWidth), H = () => Math.max(480, window.innerHeight);
-  canvas.width = W(); canvas.height = H();
-  const view = canvas.getContext('bitmaprenderer');
-  const worker = new Worker('worker.js');
   let registry = null;
   try { registry = localStorage.getItem('jwemu-registry'); } catch (e) {}
-  worker.postMessage({type: 'start', events: events.buffer, width: W(), height: H(), registry});
+  const saved = await dbAll();
+  const view = canvas.getContext('bitmaprenderer');
+  const worker = new Worker('worker.js');
+  worker.postMessage({type: 'start', events: events.buffer, mailbox: mailbox.buffer, width: SCREEN_W, height: SCREEN_H,
+                      registry, files: saved.map((f) => ({path: f.path, data: f.data, dir: f.dir, deleted: f.deleted}))});
+
+  // ---- file operations, one at a time through the mailbox ---------------------
+  // A file-op event: [0]=type [1]=id [2]=offset [3]=length [4]=total.
+  let opId = 1;
+  const replies = new Map();
+  let chain = Promise.resolve();
+  const enc = new TextEncoder();
+  function serial(fn) { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; }
+  async function waitAck(id) {
+    for (;;) {
+      const cur = Atomics.load(events, 2);
+      if (cur === id) return;
+      if (Atomics.waitAsync) await Atomics.waitAsync(events, 2, cur, 500).value;
+      else await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  function op(type, path, data, offset, total) {
+    return serial(async () => {
+      const id = opId++;
+      mailbox.fill(0, 0, PATH_BYTES);
+      mailbox.set(enc.encode(path).slice(0, PATH_BYTES - 1), 0);
+      if (data) mailbox.set(data, PATH_BYTES);
+      const reply = (type === 100 || type === 101) ? new Promise((r) => replies.set(id, r)) : null;
+      push(type, id, offset || 0, data ? data.length : 0, total || 0, 0, 0, 0);
+      await waitAck(id);
+      return reply ? await reply : null;
+    });
+  }
+  const listAll = () => op(100, ROOT);
+  const readFile = (p) => op(101, p);
+  async function writeFile(p, bytes) {
+    if (!bytes.length) return op(102, p, new Uint8Array(0), 0, 0);
+    for (let off = 0; off < bytes.length; off += CHUNK) await op(102, p, bytes.subarray(off, off + CHUNK), off, bytes.length);
+  }
+  const removePath = (p) => op(103, p);
+  const makeDir = (p) => op(104, p);
+
+  // ---- what is on the drive, and what is ours -----------------------------
+  let baseline = null;    // path -> mtime when Jw_cad started
+  let snapshot = new Map();
+  let entries = [];
+  const userPaths = new Set(saved.filter((f) => !f.deleted).map((f) => f.path));
+  let cwd = ROOT;
+  let ready = false;
+
+  worker.onerror = (e) => say('worker error: ' + (e.message || e), true);
   const cursors = {32512: 'default', 32513: 'text', 32514: 'wait', 32515: 'crosshair', 32642: 'nwse-resize',
-                   32643: 'nesw-resize', 32644: 'ew-resize', 32645: 'ns-resize', 32646: 'move', 32649: 'pointer',
-                   0: 'crosshair'};
-  worker.onerror = (e) => { say('worker error: ' + (e.message || e), true); console.log('worker error', e.message, e.filename, e.lineno); };
+                   32643: 'nesw-resize', 32644: 'ew-resize', 32645: 'ns-resize', 32646: 'move', 32649: 'pointer', 0: 'crosshair'};
+  let started = false;
   worker.onmessage = (e) => {
     const m = e.data;
     if (m.type === 'frame') {
-      if (canvas.width !== m.bitmap.width) canvas.width = m.bitmap.width;
-      if (canvas.height !== m.bitmap.height) canvas.height = m.bitmap.height;
       view.transferFromImageBitmap(m.bitmap);
-      if (!statusEl.classList.contains('hidden') && /起動中/.test(statusEl.textContent)) say('');
+      if (!started) { started = true; say('動作中'); }
+    } else if (m.type === 'ready') {
+      baseline = new Map(m.entries.map((x) => [x.p, x.mtime]));
+      setEntries(m.entries);
+      ready = true;
+      for (const b of ['up', 'add', 'mkdir', 'refresh']) $(b).disabled = false;
+      render();
+    } else if (m.type === 'list' || m.type === 'file') {
+      const r = replies.get(m.id);
+      if (r) { replies.delete(m.id); r(m); }
     } else if (m.type === 'status') {
-      if (m.text === 'running') say('起動中…（数秒かかります）');
-      else if (m.text === 'starting') {}
-      else say(m.text, true);
+      if (m.text === 'running') say('起動しています…（数秒かかります）');
+      else if (m.text !== 'starting') say(m.text, /jwemu:/.test(m.text));
     } else if (m.type === 'log') {
       console.log(m.text);
     } else if (m.type === 'cursor') {
@@ -89,24 +285,167 @@ function start() {
     }
   };
 
+  function setEntries(list) {
+    entries = list;
+    snapshot = new Map(list.map((x) => [x.p, x]));
+  }
+
+  // Jw_cad's own saves: compare with the last listing and keep what changed.
+  async function sync() {
+    if (!ready) return;
+    const r = await listAll();
+    if (!r) return;
+    const now = new Map(r.entries.map((x) => [x.p, x]));
+    for (const x of r.entries) {
+      const old = snapshot.get(x.p);
+      if (x.dir) {
+        if (!old && !baseline.has(x.p)) { await dbPut({path: x.p, dir: true}); userPaths.add(x.p); }
+        continue;
+      }
+      if (old && old.mtime === x.mtime && old.size === x.size) continue;
+      if (!old && baseline.get(x.p) === x.mtime) continue;
+      const f = await readFile(x.p);
+      if (f && f.data) { await dbPut({path: x.p, data: f.data.buffer}); userPaths.add(x.p); }
+    }
+    for (const [p] of snapshot) {
+      if (now.has(p)) continue;
+      if (baseline.has(p)) await dbPut({path: p, deleted: true});
+      else await dbDelete(p);
+      userPaths.delete(p);
+    }
+    setEntries(r.entries);
+    render();
+  }
+  setInterval(() => { if (!document.hidden) sync().catch(() => {}); }, 3000);
+
+  // ---- the panel ------------------------------------------------------------
+  const winPath = (p) => 'C:' + p.slice(3).replace(/\//g, '\\');
+  const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+  const fmtDate = (t) => { const d = new Date(t); return d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}); };
+  function render() {
+    $('path').textContent = winPath(cwd);
+    $('up').disabled = !ready || cwd === ROOT;
+    const kids = entries.filter((x) => x.p.slice(0, x.p.lastIndexOf('/')) === cwd)
+      .sort((a, b) => (b.dir - a.dir) || a.p.localeCompare(b.p, 'ja'));
+    const t = $('files');
+    t.textContent = '';
+    for (const x of kids) {
+      const name = x.p.slice(x.p.lastIndexOf('/') + 1);
+      const tr = document.createElement('tr');
+      if (userPaths.has(x.p)) tr.className = 'user';
+      const td = (cls, child) => { const c = document.createElement('td'); c.className = cls; if (child) c.append(child); tr.append(c); return c; };
+      if (x.dir) {
+        const a = document.createElement('a');
+        a.textContent = name + '\\';
+        a.onclick = () => { cwd = x.p; render(); };
+        td('name', a);
+      } else {
+        td('name', document.createTextNode(name));
+      }
+      td('size', document.createTextNode(x.dir ? '' : fmtSize(x.size)));
+      td('date', document.createTextNode(x.dir ? '' : fmtDate(x.mtime)));
+      const act = td('actions');
+      if (!x.dir) {
+        const dl = document.createElement('button');
+        dl.textContent = 'DL';
+        dl.onclick = () => download(x.p);
+        act.append(dl);
+      }
+      const del = document.createElement('button');
+      del.textContent = '削除';
+      del.onclick = () => remove(x.p, x.dir);
+      act.append(del);
+      t.append(tr);
+    }
+    if (!kids.length) {
+      const tr = document.createElement('tr');
+      const c = document.createElement('td');
+      c.textContent = '（空）';
+      c.className = 'size';
+      tr.append(c);
+      t.append(tr);
+    }
+  }
+  async function download(p) {
+    const f = await readFile(p);
+    if (!f || !f.data) return tell('読めませんでした: ' + winPath(p), true);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([f.data]));
+    a.download = p.slice(p.lastIndexOf('/') + 1);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  async function remove(p, dir) {
+    if (!confirm(winPath(p) + (dir ? ' をフォルダごと' : ' を') + '削除しますか？')) return;
+    await removePath(p);
+    if (baseline.has(p)) await dbPut({path: p, deleted: true});
+    else await dbDelete(p);
+    await sync();
+    tell('削除しました: ' + winPath(p));
+  }
+  async function addFiles(files) {
+    if (!ready) return;
+    let n = 0;
+    for (const file of files) {
+      const p = cwd + '/' + file.name;
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      tell('入れています: ' + file.name);
+      await writeFile(p, bytes);
+      await dbPut({path: p, data: bytes.buffer});
+      userPaths.add(p);
+      n++;
+    }
+    await sync();
+    tell(n + ' 個のファイルを ' + winPath(cwd) + ' に入れました。Jw_cad の「開く」で選べます。');
+  }
+  $('up').onclick = () => { cwd = cwd.slice(0, cwd.lastIndexOf('/')); render(); };
+  $('add').onclick = () => $('upload').click();
+  $('upload').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+  $('upload-top').onchange = (e) => { addFiles([...e.target.files]); e.target.value = ''; };
+  $('refresh').onclick = () => sync();
+  $('mkdir').onclick = async () => {
+    const name = prompt('新しいフォルダの名前');
+    if (!name || /[\\/:*?"<>|]/.test(name)) return;
+    const p = cwd + '/' + name;
+    await makeDir(p);
+    await dbPut({path: p, dir: true});
+    userPaths.add(p);
+    await sync();
+  };
+  $('reset').onclick = async () => {
+    if (!confirm('入れたファイル・保存した図面・設定をこのブラウザから消して、再起動します。よろしいですか？')) return;
+    await dbDelete(ROOT);
+    try { localStorage.removeItem('jwemu-registry'); } catch (e) {}
+    location.reload();
+  };
+  for (const el of [$('filebox'), canvas]) {
+    el.addEventListener('dragover', (e) => { e.preventDefault(); $('filebox').classList.add('drop'); });
+    el.addEventListener('dragleave', () => $('filebox').classList.remove('drop'));
+    el.addEventListener('drop', (e) => { e.preventDefault(); $('filebox').classList.remove('drop'); addFiles([...e.dataTransfer.files]); });
+  }
+
+  // ---- input --------------------------------------------------------------------
   const mods = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
   const pos = (e) => {
     const r = canvas.getBoundingClientRect();
-    return [Math.floor((e.clientX - r.left) * W() / r.width), Math.floor((e.clientY - r.top) * H() / r.height)];
+    return [Math.floor((e.clientX - r.left) * SCREEN_W / r.width), Math.floor((e.clientY - r.top) * SCREEN_H / r.height)];
   };
-  const button = (b) => (b === 2 ? 1 : b === 1 ? 2 : 0);
+  // Ctrl+click is the right button, for a mouse or pad without one.
+  const ctrlClick = (e) => e.button === 0 && e.ctrlKey;
+  const button = (e) => (e.button === 2 || ctrlClick(e) ? 1 : e.button === 1 ? 2 : 0);
+  const btnMods = (e) => mods(e) & ~(ctrlClick(e) ? 2 : 0);
   canvas.addEventListener('pointermove', (e) => { const [x, y] = pos(e); push(T.MouseMove, x, y, 0, 0, mods(e)); });
   canvas.addEventListener('pointerdown', (e) => {
     canvas.setPointerCapture(e.pointerId);
     const [x, y] = pos(e);
     push(T.MouseMove, x, y, 0, 0, mods(e));
-    push(T.MouseDown, x, y, button(e.button), 0, mods(e));
+    push(T.MouseDown, x, y, button(e), 0, btnMods(e));
     ime.focus({preventScroll: true});
     e.preventDefault();
   });
   canvas.addEventListener('pointerup', (e) => {
     const [x, y] = pos(e);
-    push(T.MouseUp, x, y, button(e.button), 0, mods(e));
+    push(T.MouseUp, x, y, button(e), 0, btnMods(e));
     e.preventDefault();
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -116,7 +455,6 @@ function start() {
     e.preventDefault();
   }, {passive: false});
 
-  // Keys: event.code to Windows virtual-key codes.
   const VK = {Backspace: 8, Tab: 9, Enter: 13, NumpadEnter: 13, ShiftLeft: 16, ShiftRight: 16, ControlLeft: 17,
     ControlRight: 17, AltLeft: 18, AltRight: 18, Pause: 19, CapsLock: 20, Escape: 27, Space: 32, PageUp: 33,
     PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Insert: 45,
@@ -132,9 +470,9 @@ function start() {
     m = /^F(\d+)$/.exec(e.code); if (m) return 111 + +m[1];
     return 0;
   };
-  // A key that types a character goes to the textarea as well, which sends
-  // the character (and handles Japanese input); everything else is stopped
-  // here so the browser does not act on it.
+  // A key that types a character goes to the textarea as well, which sends the
+  // character (and handles Japanese input); anything else is stopped here so
+  // the browser does not act on it.
   ime.addEventListener('keydown', (e) => {
     if (e.isComposing || e.keyCode === 229) return;
     const k = vk(e);
@@ -142,24 +480,11 @@ function start() {
     const typing = e.key.length === 1 && !e.ctrlKey && !e.altKey;
     if (!typing) e.preventDefault();
   });
-  ime.addEventListener('keyup', (e) => {
-    const k = vk(e);
-    if (k) push(T.KeyUp, 0, 0, 0, k, mods(e));
-  });
+  ime.addEventListener('keyup', (e) => { const k = vk(e); if (k) push(T.KeyUp, 0, 0, 0, k, mods(e)); });
   const sendText = (s) => { for (const ch of s) push(T.Char, 0, 0, 0, 0, 0, ch.codePointAt(0)); };
-  ime.addEventListener('input', (e) => {
-    if (e.isComposing) return;
-    sendText(ime.value);
-    ime.value = '';
-  });
-  ime.addEventListener('compositionend', (e) => {
-    sendText(e.data || ime.value);
-    ime.value = '';
-  });
+  ime.addEventListener('input', (e) => { if (e.isComposing) return; sendText(ime.value); ime.value = ''; });
+  ime.addEventListener('compositionend', (e) => { sendText(e.data || ime.value); ime.value = ''; });
   canvas.addEventListener('focus', () => ime.focus({preventScroll: true}));
-  ime.focus({preventScroll: true});
-
-  window.addEventListener('resize', () => push(T.Resize, 0, 0, 0, 0, 0, 0, (W() & 0xFFFF) | (H() << 16)));
 }
 </script>
 </body>

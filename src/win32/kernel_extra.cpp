@@ -1031,6 +1031,54 @@ void install_kernel_extra(Emulator& e) {
     });
     api(e, "CheckForReadOnlyResource", 1, [](Emulator& e) { ret(e, 0); });
 
+    // One drive, C:.  A file dialog that walks A: to Z: would otherwise list
+    // twenty-six drives that are all the same place.
+    auto drive_type = [](const std::u16string& root) -> uint32_t {
+        if (root.empty()) return 3;  // the current drive
+        char16_t d = root[0];
+        if (d >= u'a' && d <= u'z') d = static_cast<char16_t>(d - 32);
+        if (root.size() >= 2 && root[1] == u':') return d == u'C' ? 3 : 1;  // DRIVE_FIXED / DRIVE_NO_ROOT_DIR
+        return 3;
+    };
+    api(e, "GetDriveTypeW", 1, [drive_type](Emulator& e) { ret(e, drive_type(A(e, 0) ? read_wstr(e, A(e, 0)) : u"")); });
+    api(e, "GetDriveTypeA", 1, [drive_type](Emulator& e) {
+        ret(e, drive_type(A(e, 0) ? cp932_to_utf16(e.mem.read_cstring(A(e, 0))) : u""));
+    });
+    api(e, "GetLogicalDrives", 0, [](Emulator& e) { ret(e, 1u << 2); });
+    api(e, "GetLogicalDriveStringsW", 2, [](Emulator& e) {
+        static const char16_t s[] = u"C:\\\0";
+        if (U(e, 0) < 5 || !A(e, 1)) return ret(e, 5);
+        for (int i = 0; i < 5; ++i) e.mem.write16(A(e, 1) + i * 2, s[i]);
+        ret(e, 4);
+    });
+
+    // IsBad*Ptr: whether the memory is there, the only honest answer we have.
+    auto bad_range = [](Emulator& e, uint64_t p, uint64_t n) {
+        if (!p) return n != 0;
+        for (uint64_t a = p & ~0xFFFull; a < p + n; a += 0x1000)
+            if (!e.mem.is_mapped(a)) return true;
+        return false;
+    };
+    api(e, "IsBadReadPtr", 2, [bad_range](Emulator& e) { ret(e, bad_range(e, A(e, 0), A(e, 1)) ? 1 : 0); });
+    api(e, "IsBadWritePtr", 2, [bad_range](Emulator& e) { ret(e, bad_range(e, A(e, 0), A(e, 1)) ? 1 : 0); });
+    api(e, "IsBadCodePtr", 1, [bad_range](Emulator& e) { ret(e, bad_range(e, A(e, 0), 1) ? 1 : 0); });
+    api(e, "IsBadStringPtrW", 2, [bad_range](Emulator& e) {
+        uint64_t p = A(e, 0), max = A(e, 1);
+        for (uint64_t i = 0; i < max; ++i) {
+            if (bad_range(e, p + i * 2, 2)) return ret(e, 1);
+            if (!e.mem.read16(p + i * 2)) break;
+        }
+        ret(e, 0);
+    });
+    api(e, "IsBadStringPtrA", 2, [bad_range](Emulator& e) {
+        uint64_t p = A(e, 0), max = A(e, 1);
+        for (uint64_t i = 0; i < max; ++i) {
+            if (bad_range(e, p + i, 1)) return ret(e, 1);
+            if (!e.mem.read8(p + i)) break;
+        }
+        ret(e, 0);
+    });
+
     // Delay-load imports resolved by the loader on first call (Wine's DLLs use
     // them for uxtheme and friends).  The descriptor names the DLL and holds
     // RVAs to its IAT and name table; the thunk being resolved is one IAT slot.

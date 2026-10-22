@@ -34,6 +34,36 @@ void install_shell_ole(Emulator& e) {
     api(e, "DragQueryPoint", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "ExtractIconW", 3, [](Emulator& e) { ret(e, 0); });
     api(e, "SHAddToRecentDocs", 2, [](Emulator& e) { ret(e, 0); });
+    // MFC's recent-file list looks this up at run time and throws when it is
+    // missing (opening a drawing then fails with "invalid argument"); with no
+    // shell namespace here, the honest answer is a failed HRESULT.
+    // MFC ENSUREs success (a failure is thrown as an invalid argument), so this
+    // hands back an inert IShellItem: AddRef/Release count, everything else
+    // says not implemented.  SHAddToRecentDocs, the only consumer, ignores it.
+    api(e, "SHCreateItemFromParsingName", 4, [](Emulator& e) {
+        static uint64_t vtbl = 0;
+        if (!vtbl) {
+            auto method = [&](const char* name, int nargs, uint32_t result) {
+                return e.add_hook(name, nargs * 4, [result](Emulator& e) { ret(e, result); });
+            };
+            uint64_t qi = e.add_hook("__inert_QueryInterface", 12, [](Emulator& e) {
+                if (A(e, 2)) e.mem.write32(A(e, 2), 0);
+                ret(e, E_NOINTERFACE);
+            });
+            uint64_t methods[8] = {
+                qi, method("__inert_AddRef", 1, 1), method("__inert_Release", 1, 0),
+                method("__inert_BindToHandler", 5, E_NOTIMPL), method("__inert_GetParent", 2, E_NOTIMPL),
+                method("__inert_GetDisplayName", 3, E_NOTIMPL), method("__inert_GetAttributes", 3, E_NOTIMPL),
+                method("__inert_Compare", 4, E_NOTIMPL),
+            };
+            vtbl = e.heap_alloc(sizeof methods / 2);
+            for (int i = 0; i < 8; ++i) e.mem.write32(vtbl + i * 4, static_cast<uint32_t>(methods[i]));
+        }
+        uint64_t obj = e.heap_alloc(8);
+        e.mem.write32(obj, static_cast<uint32_t>(vtbl));
+        if (A(e, 3)) e.mem.write32(A(e, 3), static_cast<uint32_t>(obj));
+        ret(e, S_OK);
+    });
     api(e, "SHAppBarMessage", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "SHBrowseForFolderW", 1, [](Emulator& e) { ret(e, 0); });
     api(e, "SHGetDesktopFolder", 1, [](Emulator& e) {

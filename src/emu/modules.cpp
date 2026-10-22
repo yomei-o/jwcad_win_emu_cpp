@@ -6,6 +6,7 @@
 // some of what they export is data rather than functions.  So those get mapped
 // into guest memory for real - relocated, their own imports bound recursively,
 // their TLS callbacks and DllMain run - and only the system libraries stay hooked.
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -108,11 +109,19 @@ std::string Emulator::find_library_file(const std::string& name) const {
     for (const auto& m : modules_)
         if (!m->path.empty()) dirs.push_back(directory_of(m->path));
     dirs.push_back(".");
-    for (const auto& d : opt_.library_paths) dirs.push_back(d);
-
     for (const auto& dir : dirs) {
         std::string candidate = dir + "/" + name;
         if (file_exists(candidate)) return candidate;
+    }
+    // Directories given on the command line are host paths, which must not go
+    // through the guest's path translation: with C: mapped to a folder, a host
+    // "C:/..." would be read as a guest path and land inside that folder.
+    for (const auto& d : opt_.library_paths) {
+        std::string candidate = d + "/" + name;
+        if (std::FILE* f = std::fopen(candidate.c_str(), "rb")) {
+            std::fclose(f);
+            return candidate;
+        }
     }
     return {};
 }

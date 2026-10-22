@@ -88,8 +88,18 @@ std::shared_ptr<std::FILE> borrow_stream(std::FILE* fp) {
 }
 
 std::string g_sysroot;
+std::string g_drive_c;
 
 }  // namespace
+
+void FileTable::set_drive_c(std::string dir) {
+    for (char& c : dir)
+        if (c == '\\') c = '/';
+    while (!dir.empty() && dir.back() == '/') dir.pop_back();
+    g_drive_c = std::move(dir);
+}
+
+const std::string& FileTable::drive_c() { return g_drive_c; }
 
 void FileTable::set_sysroot(std::string dir) {
     for (char& c : dir)
@@ -129,6 +139,12 @@ std::string FileTable::host_path(const std::string& guest_path) {
     std::string out;
     out.reserve(guest_path.size());
     for (char c : guest_path) out += (c == '\\') ? '/' : c;
+    // A mapped C: drive takes the whole path; nothing below applies to it.
+    if (!g_drive_c.empty() && out.size() >= 2 && (out[0] == 'C' || out[0] == 'c') && out[1] == ':') {
+        out = g_drive_c + out.substr(2);
+        while (out.size() > 1 && out.back() == '/') out.pop_back();
+        return out;
+    }
     // A Linux guest needs absolute paths that start with '/', and the emulator
     // hands it "/C:/dir/file" spellings for host paths on a Windows host (see
     // /proc/self/exe).  Undo that on the way back to the host filesystem.

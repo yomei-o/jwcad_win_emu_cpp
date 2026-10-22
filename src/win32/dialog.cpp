@@ -900,7 +900,6 @@ void install_dialog(Emulator& e) {
         uint32_t c = find_item_by_id(g, U(e, 0), U(e, 1));
         ret(e, c ? g.send(c, U(e, 2), A(e, 3), A(e, 4)) : 0);
     });
-    e.alias_hook("SendDlgItemMessageW", "SendDlgItemMessageA");
     api(e, "MapDialogRect", 2, [](Emulator& e) {
         Gui& g = gui(e);
         Window* w = g.win(A(e, 0));

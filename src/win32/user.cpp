@@ -2654,7 +2654,6 @@ void install_user(Emulator& e) {
         }
         ret(e, g.send(h, U(e, 1), A(e, 2), A(e, 3)));
     });
-    e.alias_hook("SendMessageW", "SendMessageA");
     api(e, "SendMessageTimeoutW", 7, [](Emulator& e) {
         uint64_t r = gui(e).send(U(e, 0), U(e, 1), A(e, 2), A(e, 3));
         if (A(e, 6)) e.mem.write32(A(e, 6), static_cast<uint32_t>(r));

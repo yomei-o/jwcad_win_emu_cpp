@@ -36,6 +36,17 @@ struct UnwindTransfer {
     uint64_t context;
 };
 
+// Thrown by call_guest() when execution reaches the return sentinel with a
+// stack pointer that belongs to an *outer* call_guest().  An x86 catch block
+// does not return to the dispatcher that called its handler: it carries on in
+// its own function, which may then return to a call_guest() further out (a
+// window procedure the host called).  Each call_guest() checks whether the
+// frame is its own and rethrows otherwise, which drops the host frames the
+// guest has abandoned.
+struct NestedReturn {
+    uint64_t rsp;
+};
+
 // How arguments reach a called function.
 enum class Abi {
     Cdecl32,  // 32-bit: everything on the stack
@@ -159,6 +170,7 @@ public:
     Memory mem;
 
     Cpu& cpu() { return *cpu_; }
+    bool has_cpu() const { return cpu_ != nullptr; }
     const LoadedImage& image() const { return image_; }
     bool is64() const { return image_.mode == Mode::X86_64; }
     Os os() const { return image_.os; }

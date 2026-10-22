@@ -10,6 +10,7 @@
 //   --time MS         headless: how long to run before the final shot
 //   --dlls DIR        where real DLLs (comctl32.dll) are found (default ./dlls)
 //   --fonts DIR       where the TrueType files are (default ./fonts)
+//   --drive-c DIR     the guest's C: drive is this folder (as in the browser)
 //   -c / --trace-calls, --max-insns N   as in x86emu
 //
 // Script lines: "<ms> move X Y", "<ms> down X Y [button]", "<ms> up X Y [button]",
@@ -29,6 +30,7 @@
 #include <vector>
 
 #include "emulator.h"
+#include "files.h"
 #include "win32/font.h"
 #include "win32/gui.h"
 
@@ -427,6 +429,7 @@ int main(int argc, char** argv) {
         else if (a == "--fonts" && i + 1 < argc) fonts = argv[++i];
         else if (a == "-c" || a == "--trace-calls") opt.trace_calls = true;
         else if (a == "--imports") opt.imports_only = true;
+        else if (a == "--drive-c" && i + 1 < argc) FileTable::set_drive_c(argv[++i]);
         else if (a == "--load" && i + 1 < argc) preload.push_back(argv[++i]);
         else if (a == "--history" && i + 1 < argc) history = std::strtoull(argv[++i], nullptr, 0);
         else if (a == "--max-insns" && i + 1 < argc) opt.max_instructions = std::strtoull(argv[++i], nullptr, 0);
@@ -536,8 +539,11 @@ int main(int argc, char** argv) {
         hh.finish();
         return code;
     } catch (const std::exception& err) {
-        std::fprintf(stderr, "jwemu: %s\n  eip=%08llX\n%s", err.what(), (unsigned long long)emu.cpu().rip,
-                     emu.stack_trace(16).c_str());
+        uint64_t eip = emu.has_cpu() ? emu.cpu().rip : 0;
+        std::fprintf(stderr, "jwemu: %s\n  eip=%08llX %s\n%s", err.what(), (unsigned long long)eip,
+                     emu.describe_address(eip).c_str(), emu.has_cpu() ? emu.stack_trace(16).c_str() : "");
+        if (emu.has_cpu())
+            for (uint64_t a : emu.cpu().history()) std::fprintf(stderr, "    %08llX\n", (unsigned long long)a);
         if (!shot_path.empty()) {
             g.present_now();
             write_png(shot_path, g.screen.data(), g.screen_w, g.screen_h);

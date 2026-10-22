@@ -36,7 +36,7 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'jwemu-chrome-'));
 const proc = cp.spawn(chrome, ['--headless=new', '--remote-debugging-port=' + PORT, '--user-data-dir=' + prof,
-  '--no-first-run', '--disable-gpu', '--window-size=1280,800', 'about:blank'], {stdio: 'ignore'});
+  '--no-first-run', '--disable-gpu', '--window-size=1400,1500', 'about:blank'], {stdio: 'ignore'});
 let targets = [];
 for (let i = 0; i < 50; i++) {
   try { targets = await (await fetch('http://127.0.0.1:' + PORT + '/json')).json(); if (targets.length) break; } catch (e) {}
@@ -65,7 +65,7 @@ const mouse = (type, x, y) => send('Input.dispatchMouseEvent', {type, x, y, butt
 try {
   await send('Page.enable');
   await send('Runtime.enable');
-  await send('Emulation.setDeviceMetricsOverride', {width: 1280, height: 800, deviceScaleFactor: 1, mobile: false});
+  await send('Emulation.setDeviceMetricsOverride', {width: 1400, height: 1500, deviceScaleFactor: 1, mobile: false});
   await send('Page.navigate', {url: process.env.URL || ('http://127.0.0.1:' + port + '/')});
   // On GitHub Pages the first load installs coi-sw.js and reloads once.
   let isolated = false;
@@ -74,14 +74,46 @@ try {
   await sleep(10000);
   await shot('web_start.png');
   console.log('status: ' + await ev("document.getElementById('status').textContent"));
+  // Where the canvas is, and how screen pixels map to page pixels.
+  const rc = await ev("(() => { const b = document.getElementById('screen').getBoundingClientRect(); return [b.left, b.top, b.width / 1280]; })()");
+  const at = (x, y) => [rc[0] + x * rc[2], rc[1] + y * rc[2]];
   // Two clicks in the drawing area: a line.
-  await send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 300, y: 300});
-  await mouse('mousePressed', 300, 300); await mouse('mouseReleased', 300, 300);
+  const [x1, y1] = at(300, 300), [x2, y2] = at(600, 400);
+  await send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: x1, y: y1});
+  await mouse('mousePressed', x1, y1); await mouse('mouseReleased', x1, y1);
   await sleep(300);
-  await send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: 600, y: 400});
-  await mouse('mousePressed', 600, 400); await mouse('mouseReleased', 600, 400);
+  await send('Input.dispatchMouseEvent', {type: 'mouseMoved', x: x2, y: y2});
+  await mouse('mousePressed', x2, y2); await mouse('mouseReleased', x2, y2);
   await sleep(1500);
   await shot('web_line.png');
+  // A file through the panel's file input, then look for it in the listing.
+  const doc = (await send('DOM.getDocument')).result.root.nodeId;
+  const inp = (await send('DOM.querySelector', {nodeId: doc, selector: '#upload'})).result.nodeId;
+  await send('DOM.setFileInputFiles', {nodeId: inp, files: [path.join(root, 'tests', 'WINDEPTH.DAT')]});
+  await sleep(4000);
+  const listed = await ev("[...document.querySelectorAll('#files td.name')].map((t) => t.textContent).join(',')");
+  check(listed.includes('WINDEPTH.DAT'), 'an uploaded file appears in the panel');
+  console.log('note: ' + await ev("document.getElementById('note').textContent"));
+  // Jw_cad's own 開く, a line, then 上書: the saved drawing should come back
+  // to the panel marked as the user's (kept in IndexedDB).
+  const click = async (sx, sy, n = 1) => {
+    const [x, y] = at(sx, sy);
+    await send('Input.dispatchMouseEvent', {type: 'mouseMoved', x, y});
+    for (let i = 1; i <= n; i++) {
+      await send('Input.dispatchMouseEvent', {type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: i});
+      await send('Input.dispatchMouseEvent', {type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: i});
+    }
+  };
+  await click(940, 146); await sleep(4000);
+  await click(410, 330, 2); await sleep(3000);
+  await click(639, 438); await sleep(4000);  // いいえ to keeping the earlier line
+  await click(85, 124); await sleep(300);
+  await click(200, 200); await sleep(300);
+  await click(800, 250); await sleep(500);
+  await click(940, 168); await sleep(6000);
+  await shot('web_save.png');
+  const users = await ev("[...document.querySelectorAll('#files tr.user td.name')].map((t) => t.textContent).join(',')");
+  check(users.includes('木造平面例.jww'), 'a drawing saved by Jw_cad is marked in the panel');
   console.log(logs.slice(-15).join('\n'));
 } finally {
   ws.close();
