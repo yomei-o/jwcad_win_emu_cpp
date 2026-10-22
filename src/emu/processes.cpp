@@ -61,6 +61,20 @@ bool System::has_children(int ppid) {
 }
 
 void System::make_zombie(Process& p, int exit_code) {
+    // A batch file carries on with its next program (cmd.exe ignores the exit
+    // code unless told otherwise; these batch files never are).
+    while (!p.batch_rest.empty()) {
+        SpawnRequest next = std::move(p.batch_rest.front());
+        p.batch_rest.erase(p.batch_rest.begin());
+        if (p.emu) p.emu->flush_guest_output();
+        int error = 0;
+        std::unique_ptr<Emulator> child = load_child(next, &error);
+        if (!child) continue;
+        p.owned = std::move(child);
+        p.emu = p.owned.get();
+        p.emu->set_system(this, p.pid);
+        return;
+    }
     p.zombie = true;
     p.exit_code = exit_code;
     if (p.emu) p.emu->flush_guest_output();
@@ -75,10 +89,11 @@ void System::make_zombie(Process& p, int exit_code) {
 
 void System::terminate(int pid, int exit_code) {
     Process* p = find(pid);
+    if (p) p->batch_rest.clear();
     if (p && !p->zombie) make_zombie(*p, exit_code);
 }
 
-int System::spawn(const SpawnRequest& req) {
+std::unique_ptr<Emulator> System::load_child(const SpawnRequest& req, int* error) {
     Process* parent = find(req.ppid);
     auto child = std::make_unique<Emulator>(parent && parent->emu
                                                 ? parent->emu->options()
@@ -94,12 +109,21 @@ int System::spawn(const SpawnRequest& req) {
     try {
         child->load(req.path, req.argv);
     } catch (const LoadError&) {
-        return -2;  // ENOENT: not a loadable image
+        *error = -2;  // ENOENT: not a loadable image
+        return nullptr;
     } catch (const std::exception& err) {
         std::fprintf(stderr, "x86emu: child %s failed to start: %s\n", req.path.c_str(),
                      err.what());
-        return -8;  // ENOEXEC
+        *error = -8;  // ENOEXEC
+        return nullptr;
     }
+    return child;
+}
+
+int System::spawn(const SpawnRequest& req) {
+    int error = 0;
+    std::unique_ptr<Emulator> child = load_child(req, &error);
+    if (!child) return error;
 
     auto p = std::make_unique<Process>();
     p->pid = next_pid_++;
@@ -109,6 +133,23 @@ int System::spawn(const SpawnRequest& req) {
     p->emu->set_system(this, p->pid);
     procs_.push_back(std::move(p));
     return procs_.back()->pid;
+}
+
+int System::spawn_batch(std::vector<SpawnRequest> reqs) {
+    if (reqs.empty()) {
+        // Nothing to run (all rem and echo): a process that has already finished.
+        auto p = std::make_unique<Process>();
+        p->pid = next_pid_++;
+        p->zombie = true;
+        procs_.push_back(std::move(p));
+        return procs_.back()->pid;
+    }
+    int pid = spawn(reqs.front());
+    if (pid < 0) return pid;
+    Process* p = find(pid);
+    p->batch_rest.assign(std::make_move_iterator(reqs.begin() + 1),
+                         std::make_move_iterator(reqs.end()));
+    return pid;
 }
 
 int System::adopt(std::unique_ptr<Emulator> child, int ppid) {

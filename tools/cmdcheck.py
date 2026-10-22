@@ -324,6 +324,15 @@ T = {
     # carrying on from an existing line, not for turning a polyline into a curve.)
     'd_curve': [('btn', '曲線'), ('L', (150, 200)), ('L', (250, 300)), ('L', (350, 200)), ('L', (450, 300)), ('wait', 500),
                 ('shot', 'picked'), ('L', (555, 88)), ('wait', 1000), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'LINE': 10})],
+    # 外変 JWW_SMPL.BAT (三斜面積計算): a closed triangle (連線, closed on its start point with
+    # (R) - 線 would snap the slanted side level), its range and 選択確定, where to write the
+    # results, Enter to the four questions the BAT asks; then Jw_cad runs the BAT, which runs
+    # JWW_SMPL.EXE, and reads back the triangle's dimensions, areas and numbers.
+    'd_external': [('btn', '連線'), ('L', (150, 300)), ('L', (350, 300)), ('L', (350, 150)), ('R', (150, 300)),
+                   ('btn', '外変'), ('wait', 2500), ('LL', (350, 191)), ('wait', 2500), ('L', (130, 130)), ('L', (380, 330)),
+                   ('wait', 800), ('L', (562, 88)), ('wait', 3000), ('L', (250, 350)), ('wait', 2000),
+                   ('key', 13), ('wait', 1500), ('key', 13), ('wait', 1500), ('key', 13), ('wait', 1500), ('key', 13),
+                   ('wait', 10000), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'TEXT': 10, 'LINE': 20})],
     'd_auto': [('btn', 'AUTO'), ('L', 'empty1'), ('L', 'empty2'), ('wait', 500), ('shot', 'drawn'), ('dxf', 'OUT'),
                ('expect_diff',)],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],

@@ -5,6 +5,8 @@
 // child is a fresh Emulator built by the System; the handle the parent gets
 // back is an ordinary waitable object whose signalled state is "the System says
 // that pid is finished", so WaitForSingleObject needs nothing new.
+#include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -152,6 +154,106 @@ std::vector<std::pair<std::string, std::string>> read_environment_block(Emulator
     return env;
 }
 
+bool is_batch_file(const std::string& path) {
+    if (path.size() < 4) return false;
+    std::string ext = path.substr(path.size() - 4);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".bat" || ext == ".cmd";
+}
+
+std::string lower(std::string s) {
+    for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return s;
+}
+
+std::string trim(const std::string& s) {
+    size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return {};
+    size_t b = s.find_last_not_of(" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
+// What cmd.exe would run for a batch file, as a list of command lines.  Only
+// the part of the language that batch files handed to CreateProcess by GUI
+// programs use (Jw_cad's 外部変形: rem, echo, goto to a label that may come
+// from %1, labels, and program lines with %0-%9 substituted) is understood;
+// anything that depends on what a program did (if errorlevel, for, set) is
+// skipped with a note.  Programs run in order, so having the list up front
+// changes nothing for these files.
+std::vector<std::string> read_batch(Emulator& e, const std::string& path,
+                                    const std::vector<std::string>& argv) {
+    std::vector<std::string> lines;
+    if (std::FILE* f = FileTable::fopen_guest(path, "rb")) {
+        std::string text;
+        char buf[4096];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
+        std::fclose(f);
+        size_t start = 0;
+        while (start < text.size()) {
+            size_t end = text.find('\n', start);
+            if (end == std::string::npos) end = text.size();
+            lines.push_back(text.substr(start, end - start));
+            start = end + 1;
+        }
+    }
+    auto expand = [&](const std::string& line) {
+        std::string out;
+        for (size_t i = 0; i < line.size(); ++i) {
+            if (line[i] == '%' && i + 1 < line.size() && line[i + 1] >= '0' && line[i + 1] <= '9') {
+                size_t k = static_cast<size_t>(line[i + 1] - '0');
+                if (k == 0) out += path;
+                else if (k < argv.size()) out += argv[k];
+                ++i;
+            } else if (line[i] == '%' && i + 1 < line.size() && line[i + 1] == '%') {
+                out += '%';
+                ++i;
+            } else {
+                out += line[i];
+            }
+        }
+        return out;
+    };
+    auto find_label = [&](std::string label) -> size_t {
+        label = lower(trim(label));
+        if (!label.empty() && label[0] == ':') label.erase(0, 1);
+        for (size_t i = 0; i < lines.size(); ++i) {
+            std::string l = trim(lines[i]);
+            if (l.size() < 2 || l[0] != ':') continue;
+            std::string name = l.substr(1);
+            size_t sp = name.find_first_of(" \t");
+            if (sp != std::string::npos) name.resize(sp);
+            if (lower(name) == label) return i + 1;
+        }
+        return lines.size();  // goto :eof, or a label that is not there: the end
+    };
+
+    std::vector<std::string> commands;
+    for (size_t i = 0, steps = 0; i < lines.size() && steps < 100000; ++steps) {
+        std::string l = trim(expand(lines[i++]));
+        while (!l.empty() && l[0] == '@') l = trim(l.substr(1));
+        if (l.empty() || l[0] == ':') continue;
+        size_t sp = l.find_first_of(" \t");
+        std::string word = lower(l.substr(0, sp));
+        std::string rest = sp == std::string::npos ? std::string() : trim(l.substr(sp));
+        if (word == "rem" || word == "echo" || word == "echo." || word == "cls" || word == "pause" ||
+            word == "title" || word == "setlocal" || word == "endlocal")
+            continue;
+        if (word == "goto") {
+            i = find_label(rest);
+            continue;
+        }
+        if (word == "exit") break;
+        if (word == "if" || word == "for" || word == "set" || word == "call" || word == "cd" ||
+            word == "chdir" || word == "copy" || word == "del" || word == "erase" || word == "type") {
+            e.log_call("  batch: skipping '%s'", l.c_str());
+            continue;
+        }
+        commands.push_back(l);
+    }
+    return commands;
+}
+
 void create_process(Emulator& e, bool wide) {
     Emulator::Args a(e);
     uint64_t app_ptr = a.next_ptr();
@@ -191,8 +293,12 @@ void create_process(Emulator& e, bool wide) {
     }
 
     System::SpawnRequest req;
-    req.path = FileTable::host_path(program);
+    // The guest path: load() finds the file through it, and argv[0] is what
+    // GetModuleFileName answers, a full path on Windows whatever the command
+    // line said.  (The command line itself is raw_command_line.)
+    req.path = program;
     req.argv = std::move(argv);
+    req.argv[0] = program;
     req.raw_command_line = cmd.empty() ? app : cmd;
     req.ppid = e.pid();
     constexpr uint64_t kCreateUnicodeEnvironment = 0x400;
@@ -222,7 +328,25 @@ void create_process(Emulator& e, bool wide) {
         }
     }
 
-    int pid = e.system()->spawn(req);
+    int pid;
+    if (is_batch_file(program)) {
+        std::vector<System::SpawnRequest> reqs;
+        for (const std::string& line : read_batch(e, program, req.argv)) {
+            std::vector<std::string> args = split_command_line(line);
+            std::string exe = args.empty() ? std::string() : resolve_program(e, args[0]);
+            e.log_call("  batch: %s -> %s", line.c_str(), exe.empty() ? "not found" : exe.c_str());
+            if (exe.empty()) continue;  // cmd.exe says "not recognized" and goes on
+            System::SpawnRequest r = req;
+            r.path = exe;
+            r.argv = std::move(args);
+            r.argv[0] = exe;
+            r.raw_command_line = line;
+            reqs.push_back(std::move(r));
+        }
+        pid = e.system()->spawn_batch(std::move(reqs));
+    } else {
+        pid = e.system()->spawn(req);
+    }
     if (pid < 0) {
         e.set_last_error(pid == -2 ? 2 /* FILE_NOT_FOUND */ : 193 /* BAD_EXE_FORMAT */);
         e.set_result(0);

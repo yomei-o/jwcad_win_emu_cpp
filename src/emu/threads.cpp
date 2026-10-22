@@ -405,8 +405,21 @@ void Emulator::install_thread_hooks() {
     win32("SuspendThread", 1, [](Emulator& e) { e.set_result(0); });
 
     // ---- waiting -----------------------------------------------------------
-    win32("WaitForSingleObject", 2, [](Emulator& e) {
+    // A wait for a child process.  Blocking the thread is not enough when the
+    // wait comes from inside a window procedure the GUI layer called (Jw_cad's
+    // 外部変形 waits for its batch file in a WM_LBUTTONDOWN handler): that call
+    // has to return before the scheduler could run anyone else.  So run the
+    // other processes here until the child is done, the way a UI thread that
+    // waits on a process really does sit still.
+    auto wait_for_child = [](Emulator& e, uint64_t handle, uint64_t timeout) {
+        auto* o = e.sync_object(handle);
+        if (!o || o->kind != SyncObject::Kind::Process || !e.system() || timeout == 0) return;
+        int pid = static_cast<int>(o->owner);
+        if (!e.system()->is_zombie(pid)) e.system()->run_until_exit(pid, e.pid());
+    };
+    win32("WaitForSingleObject", 2, [wait_for_child](Emulator& e) {
         uint64_t handle = e.arg_slot(0), timeout = e.arg_slot(1);
+        wait_for_child(e, handle, timeout);
         if (e.begin_wait(handle, timeout)) {
             e.set_result(0);  // WAIT_OBJECT_0
         } else {
@@ -415,7 +428,8 @@ void Emulator::install_thread_hooks() {
             e.set_result(timeout == 0 ? 0x102u /* WAIT_TIMEOUT */ : 0u);
         }
     });
-    win32("WaitForSingleObjectEx", 3, [](Emulator& e) {
+    win32("WaitForSingleObjectEx", 3, [wait_for_child](Emulator& e) {
+        wait_for_child(e, e.arg_slot(0), e.arg_slot(1));
         if (e.begin_wait(e.arg_slot(0), e.arg_slot(1)))
             e.set_result(0);
         else

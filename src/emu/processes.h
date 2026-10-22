@@ -18,17 +18,6 @@ namespace x86emu {
 
 class System {
 public:
-    struct Process {
-        int pid = 0;
-        int ppid = 0;
-        Emulator* emu = nullptr;          // the root is caller-owned; children are owned_
-        std::unique_ptr<Emulator> owned;
-        bool zombie = false;              // finished, exit_code valid, not yet reaped
-        bool reaped = false;              // a wait() collected it; forget it entirely
-        bool exec_done = false;           // an execve replaced the image (vfork wakes on this)
-        int exit_code = 0;
-    };
-
     // What a spawn request needs, regardless of which OS API asked for it.
     struct SpawnRequest {
         std::string path;                              // host-resolvable program path
@@ -41,6 +30,20 @@ public:
         int ppid = 0;
     };
 
+    struct Process {
+        int pid = 0;
+        int ppid = 0;
+        Emulator* emu = nullptr;          // the root is caller-owned; children are owned_
+        std::unique_ptr<Emulator> owned;
+        bool zombie = false;              // finished, exit_code valid, not yet reaped
+        bool reaped = false;              // a wait() collected it; forget it entirely
+        bool exec_done = false;           // an execve replaced the image (vfork wakes on this)
+        int exit_code = 0;
+        // The rest of a batch file: programs to run, one after another, in this
+        // same process once the current one exits (see spawn_batch).
+        std::vector<SpawnRequest> batch_rest;
+    };
+
     explicit System(Emulator* root);
 
     // Runs every process until the root exits; returns the root's exit code.
@@ -49,6 +52,9 @@ public:
     // Creates a process from an executable image.  Returns the pid, or a
     // negative errno-style code (-2 if the image cannot be loaded).
     int spawn(const SpawnRequest& req);
+    // A batch file reduced to the programs it runs: the first starts now, the
+    // others in turn under the same pid, and the process finishes with the last.
+    int spawn_batch(std::vector<SpawnRequest> reqs);
     // Adopts an already-built emulator (fork_clone's result) as a child of
     // `ppid`; returns its pid.
     int adopt(std::unique_ptr<Emulator> child, int ppid);
@@ -72,6 +78,7 @@ public:
 
 private:
     void make_zombie(Process& p, int exit_code);
+    std::unique_ptr<Emulator> load_child(const SpawnRequest& req, int* error);
     void do_exec(Process& p, Emulator::ExecRequest req);
 
     std::vector<std::unique_ptr<Process>> procs_;
