@@ -83,6 +83,11 @@ void transparent_blit(Target& dst, int dx, int dy, int dw, int dh, const BlitSou
                       int sx, int sy, int sw, int sh, uint32_t key);
 void alpha_blit(Target& dst, int dx, int dy, int dw, int dh, const BlitSource& src, int sx,
                 int sy, int sw, int sh, uint8_t const_alpha, bool per_pixel);
+// PlgBlt: the source rectangle onto the parallelogram whose upper-left,
+// upper-right and lower-left corners are p[0..2] (destination pixels).  Where
+// `mask` (a 1-bpp bitmap, may be null) has a 0 bit the destination is kept.
+void plg_blit(Target& dst, const double p[3][2], const BlitSource& src, int sx, int sy, int sw, int sh,
+              const PixelBuf* mask, int mx, int my);
 
 // Ellipse points, the outline GDI walks for an Ellipse (bounding box
 // inclusive-exclusive), as a polygon for filling and as pixels for the pen.

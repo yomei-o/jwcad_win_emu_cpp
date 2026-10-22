@@ -621,6 +621,38 @@ void alpha_blit(Target& dst, int dx, int dy, int dw, int dh, const BlitSource& s
     }
 }
 
+void plg_blit(Target& dst, const double p[3][2], const BlitSource& src, int sx, int sy, int sw, int sh,
+              const PixelBuf* mask, int mx, int my) {
+    if (sw <= 0 || sh <= 0) return;
+    // Destination point = p0 + u * (p1 - p0) + v * (p2 - p0), u and v in [0, 1).
+    double ax = p[1][0] - p[0][0], ay = p[1][1] - p[0][1];
+    double bx = p[2][0] - p[0][0], by = p[2][1] - p[0][1];
+    double det = ax * by - ay * bx;
+    if (std::fabs(det) < 1e-9) return;
+    double minx = p[0][0], maxx = p[0][0], miny = p[0][1], maxy = p[0][1];
+    for (double cx : {p[1][0], p[2][0], p[1][0] + bx}) minx = std::min(minx, cx), maxx = std::max(maxx, cx);
+    for (double cy : {p[1][1], p[2][1], p[1][1] + by}) miny = std::min(miny, cy), maxy = std::max(maxy, cy);
+    Rect box = Rect{static_cast<int>(std::floor(minx)), static_cast<int>(std::floor(miny)),
+                    static_cast<int>(std::ceil(maxx)) + 1, static_cast<int>(std::ceil(maxy)) + 1}
+                   .intersect(dst.clip_box);
+    for (int y = box.t; y < box.b; ++y) {
+        for (int x = box.l; x < box.r; ++x) {
+            if (!dst.clip_is_rect && !dst.clip.contains(x, y)) continue;
+            double qx = x + 0.5 - p[0][0], qy = y + 0.5 - p[0][1];
+            double u = (qx * by - qy * bx) / det, v = (ax * qy - ay * qx) / det;
+            if (u < 0 || u >= 1 || v < 0 || v >= 1) continue;
+            int ux = static_cast<int>(u * sw), vy = static_cast<int>(v * sh);
+            int sxx = sx + ux, syy = sy + vy;
+            if (sxx < 0 || syy < 0 || sxx >= src.pb->w || syy >= src.pb->h) continue;
+            if (mask) {
+                int mxx = mx + ux, myy = my + vy;
+                if (mxx < 0 || myy < 0 || mxx >= mask->w || myy >= mask->h || !(mask->get(mxx, myy) & 0xFFFFFF)) continue;
+            }
+            dst.pb->put(x, y, source_pixel(src, sxx, syy, false));
+        }
+    }
+}
+
 void ellipse_outline(const Rect& r, std::vector<Point>& pixels) {
     // The pixels on the boundary of the filled ellipse region: every pixel of
     // the region that has a 4-neighbour outside it.

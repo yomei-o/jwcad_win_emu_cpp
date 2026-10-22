@@ -2587,7 +2587,32 @@ void install_gdi(Emulator& e) {
         ret(e, do_blit(e, U(e, 0), I(e, 1), I(e, 2), I(e, 3), I(e, 4), U(e, 5), I(e, 6), I(e, 7),
                        I(e, 3), I(e, 4), U(e, 11) & 0x00FFFFFF) ? 1 : 0);
     });
-    api(e, "PlgBlt", 10, [](Emulator& e) { ret(e, 0); });
+    // (hdcDest, const POINT[3], hdcSrc, xSrc, ySrc, width, height, hbmMask, xMask, yMask)
+    // Jw_cad draws inserted pictures this way (they may be rotated).
+    api(e, "PlgBlt", 10, [](Emulator& e) {
+        Gui& g = gui(e);
+        DC* d = g.dc(A(e, 0));
+        DC* s = g.dc(A(e, 2));
+        if (!d || !s || !A(e, 1)) return ret(e, 0);
+        Resolved r, rs;
+        Target t;
+        if (!make_target(g, d, r, t) || !resolve(g, s, rs)) return ret(e, 1);
+        BlitSource src;
+        src.pb = rs.ppb;
+        src.mono_ddb = rs.mono;
+        double p[3][2];
+        for (int i = 0; i < 3; ++i) {
+            Point q = lp_to_dp(d->s, static_cast<int32_t>(e.mem.read32(A(e, 1) + i * 8)),
+                               static_cast<int32_t>(e.mem.read32(A(e, 1) + i * 8 + 4)));
+            p[i][0] = q.x + r.org.x;
+            p[i][1] = q.y + r.org.y;
+        }
+        const PixelBuf* mask = nullptr;
+        if (GdiObject* m = g.obj(U(e, 7), ObjKind::Bitmap))
+            if (m->bitmap) mask = &m->bitmap->px;
+        plg_blit(t, p, src, I(e, 3) + rs.org.x, I(e, 4) + rs.org.y, I(e, 5), I(e, 6), mask, I(e, 8), I(e, 9));
+        ret(e, 1);
+    });
     api(e, "TransparentBlt", 11, [](Emulator& e) {
         Gui& g = gui(e);
         DC* d = g.dc(A(e, 0));

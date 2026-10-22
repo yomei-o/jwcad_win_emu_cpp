@@ -7,7 +7,8 @@
 #   python tools/cmdcheck.py -l            list the tests
 #
 # Each test starts from the same state: a fresh copy of orig/ as C:\jww, an
-# empty registry, and 木造平面例.jww opened from the command line.  Results
+# empty registry, and 木造平面例.jww opened from the command line.
+# A message box counts as a failure unless the test has ('allow_msgbox',).  Results
 # go to tmp/cmd/<test>/ and a summary to tmp/cmd/summary.txt.
 #
 # Steps are written in screen coordinates for the main window as a fresh
@@ -157,6 +158,16 @@ T = {
                  ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
     'dxf_ext_r2007': [('put', 'tests/io/ext_r2007.dxf', 'ext_r2007.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000),
                  ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
+    'image_mode': [('menu', '編集'), ('L', (170, 414)), ('wait', 1500), ('shot', 'mode')],
+    'image_insert_bmp': [('put', 'tests/io/pic.bmp', 'pic.bmp'), ('env', 'JWEMU_OPEN', r'C:\jww\pic.bmp'), ('menu', '編集'),
+                         ('L', (170, 414)), ('wait', 1500), ('L', (68, 88)), ('wait', 2500), ('shot', 'chosen'),
+                         ('L', (300, 250)), ('wait', 2000), ('shot', 'placed')],
+    'image_embed': [('allow_msgbox',), ('put', 'tests/io/pic.bmp', 'pic.bmp'), ('env', 'JWEMU_OPEN', r'C:\jww\pic.bmp'), ('menu', '編集'),
+                    ('L', (170, 414)), ('wait', 1500), ('L', (68, 88)), ('wait', 2500), ('L', (300, 250)), ('wait', 2000),
+                    ('L', (577, 88)), ('wait', 2500), ('shot', 'embed'), ('key', 13), ('wait', 1500), ('shot', 'embed2'),
+                    ('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'EMB'), ('L', (295, 290)),
+                    ('wait', 5000), ('shot', 'saved')],
+    'image_embedded_open': [('put', 'tests/io/embedded_bmp.jww', 'EMB.jww'), ('arg', 'EMB.jww'), ('wait', 2000), ('shot', 'opened')],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],
@@ -271,6 +282,10 @@ def run_test(name, drive):
     # ('put', src, name): a file (path relative to the repo) copied into C:\jww first.
     # ('arg', name): open C:\jww\<name> at start instead of 木造平面例.jww.
     drawing = '木造平面例.jww'
+    # ('env', name, value): an environment variable for the run (JWEMU_OPEN...).
+    for st in T[name]:
+        if st[0] == 'env':
+            env[st[1]] = st[2]
     for st in T[name]:
         if st[0] == 'put':
             shutil.copy(os.path.join(ROOT, st[1]), os.path.join(c, 'jww', st[2]))
@@ -293,7 +308,7 @@ def run_test(name, drive):
     for line in err.splitlines():
         if line.startswith('jwemu:') or line.startswith('x86emu:') or 'unimplemented import' in line:
             problems.append(line.strip())
-        elif line.startswith('[MessageBox]'):
+        elif line.startswith('[MessageBox]') and not any(st[0] == 'allow_msgbox' for st in T[name]):
             problems.append(line.strip())
     return name, problems
 
