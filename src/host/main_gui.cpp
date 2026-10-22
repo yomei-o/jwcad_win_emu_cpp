@@ -34,6 +34,9 @@
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#ifndef UNICODE
+#define UNICODE
+#endif
 #include <windows.h>
 #endif
 
@@ -409,6 +412,8 @@ int main(int argc, char** argv) {
     bool headless = false;
     std::string script_path, shot_path, dlls, fonts;
     uint64_t run_ms = 0;
+    std::vector<std::string> preload;  // --imports: DLLs the program loads at run time
+    size_t history = 0;  // --history N: keep the last N instruction addresses
     int i = 1;
     for (; i < argc; ++i) {
         std::string a = argv[i];
@@ -421,6 +426,9 @@ int main(int argc, char** argv) {
         else if (a == "--dlls" && i + 1 < argc) dlls = argv[++i];
         else if (a == "--fonts" && i + 1 < argc) fonts = argv[++i];
         else if (a == "-c" || a == "--trace-calls") opt.trace_calls = true;
+        else if (a == "--imports") opt.imports_only = true;
+        else if (a == "--load" && i + 1 < argc) preload.push_back(argv[++i]);
+        else if (a == "--history" && i + 1 < argc) history = std::strtoull(argv[++i], nullptr, 0);
         else if (a == "--max-insns" && i + 1 < argc) opt.max_instructions = std::strtoull(argv[++i], nullptr, 0);
         else {
             std::fprintf(stderr, "jwemu: unknown option %s\n", a.c_str());
@@ -488,6 +496,7 @@ int main(int argc, char** argv) {
         std::thread worker([&] {
             try {
                 emu.load(args[0], args);
+                if (history) emu.cpu().enable_history(history);
                 code = emu.run();
             } catch (const std::exception& err) {
                 std::fprintf(stderr, "jwemu: %s\n", err.what());
@@ -504,6 +513,13 @@ int main(int argc, char** argv) {
         std::_Exit(code);
     }
 #endif
+    if (opt.imports_only) {
+        emu.load(args[0], args);
+        if (history) emu.cpu().enable_history(history);
+        for (const auto& dll : preload) emu.load_library_for_guest(dll);
+        for (const auto& name : emu.unimplemented_imports()) std::printf("%s\n", name.c_str());
+        return 0;
+    }
     HeadlessHost hh(std::move(script), shot_path, run_ms ? run_ms : (shot_path.empty() ? 0 : 5000));
     Gui& g = gui(emu);
     g.host = &hh;
@@ -515,11 +531,13 @@ int main(int argc, char** argv) {
     g.translate_input(rs, dummy);
     try {
         emu.load(args[0], args);
+        if (history) emu.cpu().enable_history(history);
         int code = emu.run();
         hh.finish();
         return code;
     } catch (const std::exception& err) {
-        std::fprintf(stderr, "jwemu: %s\n", err.what());
+        std::fprintf(stderr, "jwemu: %s\n  eip=%08llX\n%s", err.what(), (unsigned long long)emu.cpu().rip,
+                     emu.stack_trace(16).c_str());
         if (!shot_path.empty()) {
             g.present_now();
             write_png(shot_path, g.screen.data(), g.screen_w, g.screen_h);

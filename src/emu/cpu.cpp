@@ -1424,6 +1424,12 @@ void Cpu::step() {
         case 0x9F:  // LAHF
             regs[RAX] = (regs[RAX] & ~0xFF00ull) | ((rflags & 0xFF) << 8);
             return;
+        case 0xD7: {  // XLAT: AL = [rBX + zero-extended AL]
+            uint64_t mask = addrsize_ == 4 ? 0xFFFFFFFFull : ~0ull;
+            uint64_t addr = ((regs[RBX] + (regs[RAX] & 0xFF)) & mask) + pfx_.seg_base;
+            regs[RAX] = (regs[RAX] & ~0xFFull) | mem_.read8(addr);
+            return;
+        }
 
         case 0xA0:
         case 0xA1: {  // MOV eAX, moffs

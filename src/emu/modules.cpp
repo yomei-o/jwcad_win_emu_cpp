@@ -117,6 +117,28 @@ std::string Emulator::find_library_file(const std::string& name) const {
     return {};
 }
 
+bool Emulator::is_hooked_library(const std::string& name) {
+    std::string lower = lowercase(name);
+    size_t slash = lower.find_last_of("/\\");
+    if (slash != std::string::npos) lower = lower.substr(slash + 1);
+    if (lower.find('.') == std::string::npos) lower += ".dll";
+    return is_system_library(lower);
+}
+
+uint64_t Emulator::load_library_for_guest(const std::string& name) {
+    if (uint64_t base = load_library(name)) return base;
+    std::string lower = lowercase(name);
+    if (lower.find('.') == std::string::npos) lower += ".dll";
+    std::string path = find_library_file(lower);
+    if (!path.empty() && !is_hooked_library(name)) {
+        set_last_error(193);  // ERROR_BAD_EXE_FORMAT: there, but not a usable image
+        return 0;
+    }
+    if (is_hooked_library(name)) return hooked_module_handle(name);
+    set_last_error(126);  // ERROR_MOD_NOT_FOUND
+    return 0;
+}
+
 Emulator::Module* Emulator::module_by_name(const std::string& name) {
     std::string lower = lowercase(name);
     for (auto& m : modules_)

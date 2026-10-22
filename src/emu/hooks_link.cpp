@@ -374,8 +374,10 @@ void Emulator::install_link_hooks() {
 
     // ---- user32 -------------------------------------------------------------
     // wsprintfW(buffer, format, ...) is sprintf with a wide format and no length
-    // limit, so the variadic tail starts at the third slot.
-    win32("wsprintfW", 2, [](Emulator& e) {
+    // limit, so the variadic tail starts at the third slot.  It is cdecl - the
+    // one user32 export that is, being variadic - so the hook pops nothing; a
+    // stdcall registration took eight bytes off a 32-bit caller's stack.
+    add_hook("wsprintfW", 0, [](Emulator& e) {
         Args a(e, 2);
         std::string s = format_guest(e, e.arg_slot(1), a, true);
         write_utf16(e, e.arg_slot(0), s);

@@ -2770,6 +2770,32 @@ void install_gdi(Emulator& e) {
         ret(e, k);
     });
     api(e, "GdiFlush", 0, [](Emulator& e) { ret(e, 1); });
+    api(e, "UnrealizeObject", 1, [](Emulator& e) { ret(e, 1); });
+    api(e, "GetDCOrgEx", 2, [](Emulator& e) {
+        Gui& g = gui(e);
+        DC* d = g.dc(A(e, 0));
+        if (!d) return ret(e, 0);
+        Point p{0, 0};
+        if (d->kind == DC::Kind::Window) {
+            Window* w = g.win(d->hwnd);
+            if (w) {
+                Rect r = d->whole_window ? g.window_rect_screen(w) : g.client_rect_screen(w);
+                p = {r.l, r.t};
+            }
+        }
+        write_point(e, A(e, 1), p);
+        ret(e, 1);
+    });
+    api(e, "TranslateCharsetInfo", 3, [](Emulator& e) {
+        // TCI_SRCCHARSET with SHIFTJIS, or anything else: answer for code page 932.
+        uint64_t p = A(e, 1);
+        if (!p) return ret(e, 0);
+        e.mem.write32(p, 128);   // ciCharset
+        e.mem.write32(p + 4, 932);  // ciACP
+        for (int i = 8; i < 32; i += 4) e.mem.write32(p + i, 0);
+        e.mem.write32(p + 8, 0x00020000);  // fsCsb[0]: Japanese
+        ret(e, 1);
+    });
 
     // ---- palettes --------------------------------------------------------------------
     api(e, "GetPaletteEntries", 4, [](Emulator& e) {

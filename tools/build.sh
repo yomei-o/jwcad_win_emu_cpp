@@ -4,7 +4,8 @@ set -e
 cd "$(dirname "$0")/.."
 export PATH=/c/prog/w64devkit/bin:$PATH
 JOBS=${JOBS:-$(( $(nproc) > 2 ? $(nproc) - 1 : 1 ))}
-sh tools/lowpri.sh make -j"$JOBS" "$@"
+. tools/lowpri.sh
+make -j"$JOBS" "$@"
 # The real comctl32 (5.82) runs inside the emulator; it is Microsoft's, so it
 # is copied from this machine rather than kept in the repository.
 mkdir -p dlls

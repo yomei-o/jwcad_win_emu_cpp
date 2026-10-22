@@ -4,3 +4,4 @@ dlls/
 *.png
 jwemu_registry.txt
 tmp/
+!docs/*.png

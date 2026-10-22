@@ -286,6 +286,15 @@ public:
     // loaded) oleaut32 must answer ordinal imports and ordinal GetProcAddress
     // alike - through this one table, so the two can never disagree.
     static const char* well_known_ordinal(const std::string& dll, uint32_t ordinal);
+    // Whether a library name is one the hooks implement (kernel32, user32...),
+    // as opposed to one that has to be a real file.
+    static bool is_hooked_library(const std::string& name);
+    // LoadLibrary's answer: a loaded module's base, the stand-in handle of a
+    // hooked library, or 0 with the last error set - for a file that is not
+    // there (126) or not a PE image (193), as on Windows.  A program that scans
+    // a directory and LoadLibrary's every file to find its plug-ins relies on
+    // the failure.
+    uint64_t load_library_for_guest(const std::string& name);
     Module* module_for(uint64_t base);
     Module* module_by_name(const std::string& name);
     const std::vector<std::unique_ptr<Module>>& modules() const { return modules_; }

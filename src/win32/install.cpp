@@ -6,6 +6,7 @@ namespace x86emu::win32 {
 
 void install_scroll_api(Emulator& e);
 void install_resources(Emulator& e);
+void install_ansi(Emulator& e);
 
 void install_all(Emulator& e) {
     install_kernel_extra(e);
@@ -18,6 +19,7 @@ void install_all(Emulator& e) {
     install_dialog(e);
     install_controls(e);
     install_shell_ole(e);
+    install_ansi(e);
 }
 
 }  // namespace x86emu::win32

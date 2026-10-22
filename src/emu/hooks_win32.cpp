@@ -224,14 +224,8 @@ void Emulator::install_win32_hooks() {
     auto load_library_hook = [](Emulator& e, bool wide) {
         std::string name = wide ? utf16_to_utf8(e, e.arg_slot(0), -1)
                                 : e.mem.read_cstring(e.arg_slot(0));
-        uint64_t base = e.load_library(name);
-        if (base) {
-            e.set_result(base);
-            return;
-        }
-        uint64_t handle = e.hooked_module_handle(name);
-        e.log_call("LoadLibrary(%s) -> %s", name.c_str(),
-                   handle ? "hooked sentinel" : "not found");
+        uint64_t handle = e.load_library_for_guest(name);
+        e.log_call("LoadLibrary(%s) -> 0x%llX", name.c_str(), (unsigned long long)handle);
         e.set_result(handle);
     };
     win32("LoadLibraryA", 1, [load_library_hook](Emulator& e) { load_library_hook(e, false); });

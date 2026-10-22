@@ -440,21 +440,22 @@ void install_kernel_extra(Emulator& e) {
     api(e, "LocaleNameToLCID", 2, [](Emulator& e) { ret(e, kLangJa); });
     api(e, "ConvertDefaultLocale", 1, [](Emulator& e) { ret(e, kLangJa); });
     api(e, "GetKeyboardLayout", 1, [](Emulator& e) { ret(e, 0x04110411); });
-    api(e, "GetStringTypeExW", 5, [](Emulator& e) {
-        // CT_CTYPE1 only, which is what anyone asks.
-        uint32_t info = U(e, 1);
-        uint64_t src = A(e, 2), out = A(e, 4);
-        int n = I(e, 3);
+    // CT_CTYPE1 only, which is what anyone asks.  GetStringTypeW is the same
+    // without the leading locale argument.
+    auto string_type = [](Emulator& e, int first) {
+        uint32_t info = U(e, first);
+        uint64_t src = A(e, first + 1), out = A(e, first + 3);
+        int n = I(e, first + 2);
         std::u16string s = n < 0 ? read_wstr(e, src) : read_wstr(e, src, n);
         if (n < 0) n = static_cast<int>(s.size()) + 1;
         for (int i = 0; i < n; ++i) {
-            uint16_t c = i < static_cast<int>(s.size()) ? s[i] : 0;
+            uint16_t c = i < static_cast<int>(s.size()) ? s[i] : static_cast<uint16_t>(e.mem.read16(src + i * 2));
             uint16_t t = 0;
             if (info == 1) {
                 if (c >= 'A' && c <= 'Z') t = 0x0001 | 0x0100;
                 else if (c >= 'a' && c <= 'z') t = 0x0002 | 0x0100;
                 else if (c >= '0' && c <= '9') t = 0x0004 | 0x0080;
-                else if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == 0x3000) t = 0x0008 | (c == ' ' || c == 0x3000 ? 0x0040 : 0);
+                else if (c == ' ' || c == 9 || c == 10 || c == 13 || c == 0x3000) t = 0x0008 | (c == ' ' || c == 0x3000 ? 0x0040 : 0);
                 else if (c < 0x20 || c == 0x7F) t = 0x0020;
                 else if (c < 0x80) t = 0x0010;
                 else if (c >= 0x3040) t = 0x0100;
@@ -462,8 +463,10 @@ void install_kernel_extra(Emulator& e) {
             e.mem.write16(out + i * 2, t);
         }
         ret(e, 1);
-    });
-    e.alias_hook("GetStringTypeExW", "GetStringTypeW");
+    };
+    api(e, "GetStringTypeExW", 5, [string_type](Emulator& e) { string_type(e, 1); });
+    api(e, "GetStringTypeW", 4, [string_type](Emulator& e) { string_type(e, 0); });
+
     api(e, "CompareStringA", 6, [](Emulator& e) {
         uint32_t flags = U(e, 1);
         auto rd = [&](uint64_t p, int n) {
@@ -923,7 +926,127 @@ void install_kernel_extra(Emulator& e) {
         e.set_last_error(2);
         ret(e, 0);
     });
-    api(e, "QueryActCtxW", 7, [](Emulator& e) { ret(e, 0); });
+    // MFC asks before every window it creates (afxcomctl32: is there an
+    // activation context to switch to?).  Failing here makes CWnd::CreateEx
+    // give up before it calls CreateWindowEx at all.  An empty, successful
+    // answer says "no special context".
+    api(e, "QueryActCtxW", 7, [](Emulator& e) {
+        uint64_t buf = A(e, 4);
+        uint32_t cb = U(e, 5);
+        for (uint32_t i = 0; i + 4 <= cb && buf; i += 4) e.mem.write32(buf + i, 0);
+        if (A(e, 6)) e.mem.write32(A(e, 6), cb);
+        ret(e, 1);
+    });
+
+    // ---- security: one user, an administrator --------------------------------------
+    api(e, "OpenProcessToken", 3, [](Emulator& e) {
+        if (A(e, 2)) e.mem.write32(A(e, 2), 0x00700F00);
+        ret(e, 1);
+    });
+    api(e, "OpenThreadToken", 4, [](Emulator& e) {
+        e.set_last_error(1008);  // ERROR_NO_TOKEN
+        ret(e, 0);
+    });
+    api(e, "AllocateAndInitializeSid", 11, [](Emulator& e) {
+        uint64_t sid = e.heap_alloc(8 + 4 * 8);
+        uint8_t count = static_cast<uint8_t>(U(e, 1));
+        e.mem.write8(sid, 1);
+        e.mem.write8(sid + 1, count);
+        for (int i = 0; i < 6; ++i) e.mem.write8(sid + 2 + i, e.mem.read8(A(e, 0) + i));
+        for (int i = 0; i < count && i < 8; ++i) e.mem.write32(sid + 8 + i * 4, U(e, 2 + i));
+        e.mem.write32(A(e, 10), static_cast<uint32_t>(sid));
+        ret(e, 1);
+    });
+    api(e, "FreeSid", 1, [](Emulator& e) {
+        if (A(e, 0)) e.heap_free(A(e, 0));
+        ret(e, 0);
+    });
+    api(e, "CheckTokenMembership", 3, [](Emulator& e) {
+        if (A(e, 2)) e.mem.write32(A(e, 2), 1);
+        ret(e, 1);
+    });
+    api(e, "GetTokenInformation", 5, [](Emulator& e) {
+        if (A(e, 4)) e.mem.write32(A(e, 4), 0);
+        e.set_last_error(87);
+        ret(e, 0);
+    });
+    api(e, "NtQueryInformationProcess", 5, [](Emulator& e) {
+        // Class 0 (ProcessBasicInformation) is the one anyone asks for.
+        if (U(e, 1) == 0 && A(e, 2) && U(e, 3) >= 24) {
+            for (int i = 0; i < 24; i += 4) e.mem.write32(A(e, 2) + i, 0);
+            e.mem.write32(A(e, 2) + 16, static_cast<uint32_t>(e.pid()));
+            if (A(e, 4)) e.mem.write32(A(e, 4), 24);
+            return ret(e, 0);
+        }
+        ret(e, 0xC0000003);  // STATUS_INVALID_INFO_CLASS
+    });
+
+    // ---- odds and ends ------------------------------------------------------------------
+    api(e, "GetLocalTime", 1, [](Emulator& e) {
+        std::time_t now = std::time(nullptr);
+        std::tm lt{};
+#if defined(_WIN32)
+        localtime_s(&lt, &now);
+#else
+        localtime_r(&now, &lt);
+#endif
+        int v[8] = {lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_wday, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec, 0};
+        write_systemtime(e, A(e, 0), v);
+        ret(e, 0);
+    });
+    api(e, "GetNumberFormatW", 6, [](Emulator& e) {
+        std::u16string s = read_wstr(e, A(e, 2));
+        if (!A(e, 4) || I(e, 5) == 0) return ret(e, s.size() + 1);
+        write_wstr(e, A(e, 4), s, I(e, 5));
+        ret(e, s.size() + 1);
+    });
+    api(e, "EnumCalendarInfoW", 4, [](Emulator& e) { ret(e, 1); });
+    api(e, "EnumResourceLanguagesW", 5, [](Emulator& e) {
+        // One language per resource: Japanese.
+        e.call_guest(A(e, 3), {A(e, 0), A(e, 1), A(e, 2), 0x0411, A(e, 4)});
+        ret(e, 1);
+    });
+    api(e, "FindResourceExA", 4, [](Emulator& e) {
+        uint64_t addr;
+        uint32_t size;
+        // A resource directory entry is what FindResource hands out; the
+        // existing FindResourceW hook speaks that form, so ask it.
+        uint64_t h = e.existing_hook("FindResourceW");
+        if (!h) return ret(e, 0);
+        auto arg = [&](int i) -> uint64_t {
+            uint64_t p = A(e, i);
+            if (p < 0x10000) return p;
+            std::u16string w = cp932_to_utf16(e.mem.read_cstring(p));
+            uint64_t buf = e.heap_alloc((w.size() + 1) * 2);
+            write_wstr(e, buf, w, static_cast<int>(w.size() + 1));
+            return buf;
+        };
+        uint64_t type = arg(1), name = arg(2);
+        uint64_t r = e.call_guest(h, {A(e, 0), name, type});
+        if (type >= 0x10000) e.heap_free(type);
+        if (name >= 0x10000) e.heap_free(name);
+        (void)addr;
+        (void)size;
+        ret(e, r);
+    });
+    api(e, "CheckForReadOnlyResource", 1, [](Emulator& e) { ret(e, 0); });
+
+    // The last stop before a C runtime terminates the process: say why, since
+    // the program itself will not.
+    api(e, "UnhandledExceptionFilter", 1, [](Emulator& e) {
+        uint64_t ep = A(e, 0);
+        uint64_t rec = ep ? e.mem.read32(ep) : 0;
+        std::fprintf(stderr, "[jwemu] unhandled exception code %08X at %08X\n",
+                     rec ? e.mem.read32(rec) : 0, rec ? e.mem.read32(rec + 12) : 0);
+        std::fprintf(stderr, "%s", e.stack_trace(24).c_str());
+        auto h = e.cpu().history();
+        if (!h.empty()) {
+            std::fprintf(stderr, "  last instructions:\n");
+            size_t from = h.size() > 64 ? h.size() - 64 : 0;
+            for (size_t i = from; i < h.size(); ++i) std::fprintf(stderr, "    %08llX\n", (unsigned long long)h[i]);
+        }
+        ret(e, 1);  // EXCEPTION_EXECUTE_HANDLER
+    });
 }
 
 }  // namespace x86emu::win32

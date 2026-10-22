@@ -1744,6 +1744,13 @@ void install_user(Emulator& e) {
         ret(e, def_window_proc(gui(e), U(e, 0), U(e, 1), A(e, 2), A(e, 3)));
     });
     e.alias_hook("DefWindowProcW", "DefWindowProcA");
+    // No MDI here: the frame and child defaults are the plain window default.
+    api(e, "DefFrameProcW", 5, [](Emulator& e) {
+        ret(e, def_window_proc(gui(e), U(e, 0), U(e, 2), A(e, 3), A(e, 4)));
+    });
+    api(e, "DefMDIChildProcW", 4, [](Emulator& e) {
+        ret(e, def_window_proc(gui(e), U(e, 0), U(e, 1), A(e, 2), A(e, 3)));
+    });
 
     // ---- classes ----------------------------------------------------------------
     auto reg_class = [](Emulator& e, uint64_t p, bool ex, bool ansi) -> uint32_t {
@@ -1807,6 +1814,8 @@ void install_user(Emulator& e) {
         WndClass* c = nullptr;
         if (name < 0x10000) c = g.find_class_atom(static_cast<uint32_t>(name));
         else c = g.find_class(read_wstr(e, name), A(e, 0));
+        e.log_call("GetClassInfo(%s) -> %s", name < 0x10000 ? "atom" : to_utf8(read_wstr(e, name)).c_str(),
+                   c ? "found" : "none");
         if (!c) {
             e.set_last_error(1411);  // ERROR_CLASS_DOES_NOT_EXIST
             return ret(e, 0);
@@ -1828,8 +1837,6 @@ void install_user(Emulator& e) {
     };
     api(e, "GetClassInfoW", 3, [class_info](Emulator& e) { class_info(e, false); });
     api(e, "GetClassInfoExW", 3, [class_info](Emulator& e) { class_info(e, true); });
-    api(e, "GetClassInfoA", 3, [class_info](Emulator& e) { class_info(e, false); });
-    api(e, "GetClassInfoExA", 3, [class_info](Emulator& e) { class_info(e, true); });
     api(e, "GetClassNameW", 3, [](Emulator& e) {
         Window* w = gui(e).win(A(e, 0));
         if (!w || !w->cls) return ret(e, 0);
@@ -2294,9 +2301,6 @@ void install_user(Emulator& e) {
             }
         ret(e, 0);
     });
-    e.alias_hook("SetPropW", "SetPropA");
-    e.alias_hook("GetPropW", "GetPropA");
-    e.alias_hook("RemovePropW", "RemovePropA");
     api(e, "SetWindowTextW", 2, [](Emulator& e) {
         ret(e, gui(e).send(U(e, 0), WM_SETTEXT, 0, A(e, 1)) ? 1 : 0);
     });
@@ -3369,7 +3373,6 @@ void install_user(Emulator& e) {
         if (p && (action & 0xF000) == 0x1000) e.mem.write32(p, 0);
         ret(e, 1);
     });
-    e.alias_hook("SystemParametersInfoW", "SystemParametersInfoA");
     api(e, "GetDoubleClickTime", 0, [](Emulator& e) { ret(e, 500); });
     api(e, "GetCaretBlinkTime", 0, [](Emulator& e) { ret(e, 530); });
     api(e, "SetCaretBlinkTime", 1, [](Emulator& e) { ret(e, 1); });
@@ -3443,7 +3446,6 @@ void install_user(Emulator& e) {
         if (size >= 104) write_wstr(e, p + 40, u"\\\\.\\DISPLAY1", 32);
         ret(e, 1);
     });
-    e.alias_hook("GetMonitorInfoW", "GetMonitorInfoA");
     api(e, "EnumDisplayMonitors", 4, [](Emulator& e) {
         Gui& g = gui(e);
         uint64_t rc = g.scratch_alloc(16);

@@ -207,7 +207,33 @@ void install_registry(Emulator& e) {
         Key* base = key_from_handle(A(e, 0));
         if (!base) return ret(e, 6);  // ERROR_INVALID_HANDLE
         std::u16string sub = read_name(e, A(e, 1), wide);
+        if (base == &reg().roots[0] && upper(sub) == u".JWW" && !walk(base, sub, false)) {
+            // What Jw_cad's installer leaves behind: .jww associated with this
+            // executable.  Without it every start asks to run install.exe.
+            uint64_t h = e.existing_hook("GetModuleFileNameW");
+            std::u16string exe = u"Jw_win.exe";
+            if (h) {
+                uint64_t buf = e.heap_alloc(520);
+                e.call_guest(h, {0, buf, 260});
+                exe = read_wstr(e, buf);
+                e.heap_free(buf);
+            }
+            auto set_default = [](Key* k, const std::u16string& v) {
+                Value val{u"", 1, {}};
+                for (char16_t c : v) {
+                    val.data.push_back(static_cast<uint8_t>(c & 0xFF));
+                    val.data.push_back(static_cast<uint8_t>(c >> 8));
+                }
+                val.data.push_back(0);
+                val.data.push_back(0);
+                k->values.push_back(val);
+            };
+            set_default(walk(base, u".jww", true), u"jwwfile");
+            set_default(walk(base, u"jwwfile\\shell\\open\\command", true), u"\"" + exe + u"\" \"%1\"");
+            reg().dirty = true;
+        }
         Key* k = walk(base, sub, create);
+        e.log_call("RegOpenKey(%llX, %s) -> %s", (unsigned long long)A(e, 0), to_utf8(sub).c_str(), k ? "ok" : "missing");
         if (!k) {
             if (A(e, out_arg)) e.mem.write32(A(e, out_arg), 0);
             return ret(e, 2);  // ERROR_FILE_NOT_FOUND

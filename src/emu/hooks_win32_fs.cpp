@@ -104,10 +104,14 @@ void write_find_data(Emulator& e, uint64_t out, const Emulator::DirectoryEntry& 
 }  // namespace
 
 std::vector<Emulator::DirectoryEntry> Emulator::list_directory(const std::string& spec) {
+    std::vector<DirectoryEntry> found;
+    // An empty name matches nothing.  Splitting it would read as "everything
+    // in the current directory", and Jw_cad, whose plug-in folder setting is
+    // empty on a fresh install, would then LoadLibrary every file it owns.
+    if (spec.empty()) return found;
     std::string directory, pattern;
     split_pattern(spec, directory, pattern);
 
-    std::vector<DirectoryEntry> found;
     std::error_code ec;
     // Paths are UTF-8 strings here; going through u8path/u8string keeps the
     // host's ANSI code page out of it.  path::string() is worse than lossy on
