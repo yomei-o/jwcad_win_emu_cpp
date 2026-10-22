@@ -157,6 +157,29 @@ try {
     await shot('web_save_' + ext + '.png');
     check(names.includes('木造平面例.' + ext), 'saving as ' + ext.toUpperCase() + ' puts 木造平面例.' + ext + ' in the panel');
   }
+  // A DXF from another CAD, uploaded through the panel, then ファイル →
+  // DXFファイルを開く and a double click on its thumbnail.
+  await send('DOM.setFileInputFiles', {nodeId: inp, files: [path.join(root, 'tests', 'io', 'ext_r2000.dxf')]});
+  await sleep(3000);
+  await click(66, 60); await sleep(2000);
+  await click(95, 233); await sleep(5000);
+  // The grid also holds 木造平面例.dxf, saved above, in the first cell.
+  await click(612, 205, 2); await sleep(5000);
+  await shot('web_open_dxf.png');
+  // Proof that it is the open drawing: 保存 offers its name, so saving as
+  // JWW puts ext_r2000.jww in the panel.
+  await click(940, 187); await sleep(4000);
+  await click(412, 131); await sleep(2000);
+  await click(562, 310); await sleep(1500);  // ｊｗｗ: the dialog remembers the last format (dxf)
+  await send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13});
+  await send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13});
+  let saved = '';
+  for (let i = 0; i < 30 && !saved.includes('ext_r2000.jww'); i++) {
+    await sleep(1000);
+    saved = await ev("[...document.querySelectorAll('#files tr.user td.name')].map((t) => t.textContent).join(',')");
+  }
+  await shot('web_open_dxf_saved.png');
+  check(saved.includes('ext_r2000.jww'), 'an uploaded DXF opens through DXFファイルを開く (saved back as ext_r2000.jww)');
   console.log(logs.slice(-15).join('\n'));
 } finally {
   ws.close();
