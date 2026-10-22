@@ -17,7 +17,7 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
 * 見た目は本物（Windows 11 上の Jw_cad）のキャプチャと合わせ済み：枠・キャプションボタン・
   メニューバー・ツールバー帯・チェックボックス・MessageBox
 * **いまやっていること：全コマンドの動作確認**（ユーザーの依頼「きちんと動いているか各コマンドを確認して」）
-  * `tools/cmdcheck.py` で 68 個のテスト（ツールバーの全コマンド・メニュー・ズーム）を回し、
+  * `tools/cmdcheck.py` で 108 個のテスト（ツールバーの全コマンド・メニュー・ズーム・ファイル入出力）を回し、
     クラッシュ・未実装 API・エラー MessageBox は**ゼロ**
   * スクリーンショットを目で見て確認中。本物との比較（`tools/realcheck.py`）は 67 中 約30 で中断
     （ユーザーがこの PC を使い始めたため）
@@ -47,6 +47,51 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
   → 日本語・中立・英語の順に選ぶ（`strings.cpp` と `hooks_win32c.cpp` の 2 か所）
 * `realrun.ps1` に画面そのもののキャプチャ（`screen_*.png`、DWM の枠と影が写る）と `dump`（本物の窓ツリー）を追加
 
+### ファイル入出力（2026-10-22 夜、ユーザーの依頼「DXF などいろんな形式で入出力できるか調べて」）
+
+結果：**JWW / JWC / DXF / SFC / P21 の保存と読み込みがすべて往復できる**。テストは `tests/io/` と
+cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`・`text_file_read`。
+
+| 形式 | 保存 | 開く | メモ |
+|---|---|---|---|
+| JWW | ○ | ○ | 名前を付けて保存で拡張子が付かなかった（下の 1） |
+| JWC | ○ | ○ | |
+| DXF | ○ | ○ | 内蔵の書出し（R12 相当）と JWW2DXFConv.dll（AC1024、レジストリ `DXF\DxfOutUseDll=1`）の両方 |
+| SFC（SXF） | ○ | ○ | common_lib.dll |
+| P21（SXF） | ○ | ○ | common_lib_AP202.dll。作業ファイルを %TEMP% に作る（下の 4） |
+| 他の CAD 風 DXF | — | ○ | `tools/gen_dxf.py`：R12（ENTITIES だけ）、R2000、R2007（UTF-8）。SPLINE だけ出ない（Jw_cad 側の仕様と思うが本物で未確認） |
+| 画像（BMP） | 同梱で JWW に | ○ | 画像編集→画像挿入。JPEG/PNG は Direct2D 表示のときだけ Jw_cad が許す（下の 6） |
+| 環境設定 .jwf | ○ | ○ | |
+| テキスト（文字→文読） | | ○ | Shift-JIS |
+| ファイル一括変換 | ○ | | 複数選択（OFN_ALLOWMULTISELECT） |
+
+直したもの：
+
+1. **MultiByteToWideChar** がバッファ不足のとき何も書かなかった。ATL の `CString(const char*)` は
+   長さ -1・バッファは終端なしの長さで呼び、Windows が「書けた分は書いて失敗する」ことに頼る。
+   Jw_cad の狭い文字列リテラルがすべて空の CString になり、`"" == ".jww"` が真 → 拡張子が付かない、
+   DXF 保存が空の MessageBox で失敗、など。（`kernel_extra.cpp`）
+2. **WindowFromPoint 相当**：HTTRANSPARENT を返す子（グループボックス）は飛ばして下の兄弟を探す。
+   新規作成ダイアログの「保存形式」ラジオが押せなかった。（`user.cpp` window_from_point）
+3. **CB_SELECTSTRING / LB_FINDSTRING に空文字列**は何も選ばない。DDX_CBString が空の値を先に送って
+   選択を .jww に戻していた（DXF を開くのファイル選択が .jww で始まる）。（`controls.cpp`）
+4. C: をフォルダに割り当てたとき **TEMP/TMP は C:\Temp**、GetTempPath はフォルダを作る。ホストの
+   %TEMP% は C: の中に無いので P21 保存が「0 :」で失敗していた。
+5. **PlgBlt** が stub だった。挿入画像は DrawDibDraw でメモリ DC に描いてから PlgBlt（マスク付き）で写す。
+6. Jw_cad が JPEG/PNG/GIF/TIFF の挿入を許すのは `[0xa088f4]`（レジストリ `View\Direct2d`）が真のときだけ。
+   エミュレータは Direct2D が無いと答える → GDI 表示 → BMP だけ（Direct2D の無い実機と同じ）。
+   GDI 表示では GDI+ は呼ばれない（gdiplus は stub のまま）。
+7. **ファイルを開く／保存のダイアログ**（GetOpenFileName / GetSaveFileName）を新しく作った（`dialog.cpp`
+   file_dialog）。これまでは JWEMU_OPEN 環境変数だけ。複数選択、拡張子なしの名前には種類の拡張子を付ける。
+
+調べるのに足した道具：
+
+* `-c` のトレースに呼び出し元（`[hook] Name <- 0x...`）
+* `JWEMU_STACK=<API名>`：その API の呼び出しごとに EBP チェーン
+* `JWEMU_BREAK=addr,addr`（16 進）：そこに来たらレジスタと、レジスタ・スタック先頭が指す文字列を表示
+* cmdcheck の手順に `('put', src, name)`・`('arg', name)`・`('env', k, v)`・`('reg', key, name, dword)`・
+  `('allow_msgbox',)`、`KEEP_C=1` で C: を残す
+
 ## 最初にやること
 
 1. `git pull`
@@ -61,6 +106,7 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
    sh tools/build_wasm.sh
    node tools/web_test.mjs           # 線・アップロード・スクロール・開く・保存・印刷
    ```
+   （Node 20 では `node --experimental-websocket tools/web_test.mjs`。WebSocket が標準で無い）
    全部 `ok` なら commit → pull → push（ユーザーの方針：確認済みの成果は聞かずに push まで）
 
 ## 残りの作業（優先順）
@@ -68,9 +114,8 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
 1. **文字入力ボックスの文字が大きすぎる**（ユーザー指摘）。いま約 16px。本物の大きさを
    `realcheck.py text_typed` で撮って合わせる（`realrun.ps1` は 文字入力 の Edit に WM_CHAR を送るよう直してある）。
    エディットのフォントは Jw_cad が WM_SETFONT で与えている。フォント名・高さを JWEMU_TRACE_MSG で追うと早い
-2. **外変（外部変形）のファイル一覧でメモ欄が文字化け**：BAT は Shift-JIS なのに `[UTF-8]` と表示される。
-   Jw_cad の UTF-8 判定方法を調べる（MB_ERR_INVALID_CHARS は実装したが変わらなかった。
-   IsTextUnicode か、自前判定か、別の API）。本物の表示を realcheck で確認してから
+2. ~~外変のファイル一覧でメモ欄が文字化け（`[UTF-8]`）~~ → 直った（`[S-JIS]` と正しい日本語）。
+   原因は MultiByteToWideChar（「ファイル入出力」の 1）
 3. **基設（基本設定）のタブ**がただの文字列に見える（Wine comctl32 の SysTabControl32）。本物と比較
 4. **建平・建断・建立**のファイル選択が空。本物も空か確認
 5. **ホイールで拡大縮小しない**。本物の既定値も無効かもしれない。確認
@@ -78,6 +123,8 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
 7. メニューなどの文字幅：本物は Yu Gothic UI。代わりのフォントが横に広い（「ファイル(F)」本物 46px / こちら 60px）
 8. 未実装 import の一覧：`--script` に `4000 dump` の 1 行を書くと `[unimplemented]` で出る。
    OLE 埋め込み・メタファイル（CreateMetaFile 等）・PolyBezierTo・GdiAlphaBlend など。使われた時に実装
+9. ファイル入出力の残り（上の「ファイル入出力」）：DXF の SPLINE が読まれないのが本物も同じか、
+   新しいファイルダイアログの見た目（本物は Vista の IFileDialog）。JPEG/PNG の画像挿入は Direct2D が要るので大仕事
 
 ## テストの道具
 
