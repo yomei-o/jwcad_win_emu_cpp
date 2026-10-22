@@ -1,0 +1,6 @@
+build/
+jwemu.exe
+dlls/
+*.png
+jwemu_registry.txt
+tmp/

@@ -1,0 +1,1027 @@
+   0
+TABLE
+   2
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     9
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+ByBlock
+  70
+     0
+   3
+
+  72
+    65
+  73
+     0
+  40
+0.0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+ByLayer
+  70
+     0
+   3
+
+  72
+    65
+  73
+     0
+  40
+0.0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+Continuous
+  70
+     0
+   3
+Solid line
+  72
+    65
+  73
+     0
+  40
+0.0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+DASHED1
+  70
+    64
+   3
+--  --  --  --  --  --  --  --  
+  72
+    65
+  73
+     2
+  40
+2.5
+  49
+1.25
+  74
+     0
+  49
+-1.25
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+DASHED2
+  70
+    64
+   3
+----    ----    ----    ----    
+  72
+    65
+  73
+     2
+  40
+5.0
+  49
+2.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+DASHED3
+  70
+    64
+   3
+------  ------  ------  ------  
+  72
+    65
+  73
+     2
+  40
+5.0
+  49
+3.75
+  74
+     0
+  49
+-1.25
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+DUMMY
+  70
+     0
+   3
+__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __
+  72
+    65
+  73
+     5
+  40
+8.0
+  49
+1.0
+  74
+     0
+  49
+-2.0
+  74
+     0
+  49
+2.0
+  74
+     0
+  49
+-2.0
+  74
+     0
+  49
+1.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+DOT
+  70
+    64
+   3
+-   -   -   -   -   -   -   -   
+  72
+    65
+  73
+     2
+  40
+2.5
+  49
+0.625
+  74
+     0
+  49
+-1.875
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+CENTER1
+  70
+    64
+   3
+----- - ----- - ----- - ----- - 
+  72
+    65
+  73
+     4
+  40
+10.0
+  49
+6.25
+  74
+     0
+  49
+-1.25
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-1.25
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+CENTER2
+  70
+    64
+   3
+----------  --  ----------  --  
+  72
+    65
+  73
+     4
+  40
+20.0
+  49
+12.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+2.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+PHANTOM1
+  70
+    64
+   3
+--- - - --- - - --- - - --- - - 
+  72
+    65
+  73
+     6
+  40
+10.0
+  49
+3.25
+  74
+     0
+ 49
+-1.25
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-1.25
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-1.25
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+PHANTOM2
+  70
+    64
+   3
+--------  -  -  --------  -  -  
+  72
+    65
+  73
+     6
+  40
+20.0
+  49
+10.0
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+RAND1
+  70
+    64
+   3
+ランダム線1
+  72
+    65
+  73
+     4
+  40
+10.0
+  49
+1.0
+  74
+     0
+  49
+-2.0
+  74
+     0
+  49
+3.0
+  74
+     0
+  49
+-4.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+RAND2
+  70
+    64
+   3
+ランダム線2
+  72
+    65
+  73
+     4
+  40
+14.0
+  49
+2.0
+  74
+     0
+  49
+-3.0
+  74
+     0
+  49
+4.0
+  74
+     0
+  49
+-5.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+RAND3
+  70
+    64
+   3
+ランダム線3
+  72
+    65
+  73
+     4
+  40
+18.0
+  49
+3.0
+  74
+     0
+  49
+-4.0
+  74
+     0
+  49
+5.0
+  74
+     0
+  49
+-6.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+RAND4
+  70
+    64
+   3
+ランダム線4
+  72
+    65
+  73
+     4
+  40
+22.0
+  49
+4.0
+  74
+     0
+  49
+-5.0
+  74
+     0
+  49
+6.0
+  74
+     0
+  49
+-7.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+RAND5
+  70
+    64
+   3
+ランダム線5
+  72
+    65
+  73
+     4
+  40
+26.0
+  49
+5.0
+  74
+     0
+  49
+-6.0
+  74
+     0
+  49
+7.0
+  74
+     0
+  49
+-8.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+LONG1
+  70
+    64
+   3
+----------  --  ----------  --  
+  72
+    65
+  73
+     4
+  40
+40.0
+  49
+32.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+2.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+LONG2
+  70
+    64
+   3
+--------  -  -  --------  -  -  
+  72
+    65
+  73
+     6
+  40
+40.0
+  49
+30.0
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-2.5
+  74
+     0
+  49
+1.25
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+LONG3
+  70
+    64
+   3
++++++++++++++++..+++++++++++++++
+  72
+    65
+  73
+     2
+  40
+40.0
+  49
+37.5
+  74
+     0
+  49
+-2.5
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+LONG4
+  70
+    64
+   3
++++++++++++++++..+++++++++++++++
+  72
+    65
+  73
+     2
+  40
+80.0
+  49
+75.0
+  74
+     0
+  49
+-5.0
+  74
+     0
+   0
+LTYPE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbLinetypeTableRecord
+   2
+LONG5
+  70
+    64
+   3
+----------  --  ----------  --  
+  72
+    65
+  73
+     4
+  40
+60.0
+  49
+37.5
+  74
+     0
+  49
+-7.5
+  74
+     0
+  49
+7.5
+  74
+     0
+  49
+-7.5
+  74
+     0
+<--Insert SXF Table Layer Table
+-->>
+   0
+ENDTAB
+   0
+TABLE
+   2
+STYLE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     1
+   0
+STYLE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbTextStyleTableRecord
+   2
+STANDARD
+  70
+     0
+  40
+0.0
+  41
+1.0
+  50
+0.0
+  71
+     0
+  42
+0.2
+   3
+txt
+   4
+extfont.shx
+   0
+STYLE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbTextStyleTableRecord
+   2
+JWTATEGAKI
+  70
+    68
+  40
+0.0
+  41
+1.0
+  50
+0.0
+  71
+     0
+  42
+1.0
+   3
+txt
+   4
+extfont.shx
+   0
+STYLE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbTextStyleTableRecord
+   2
+MS Gothic
+  70
+     0
+  40
+0.0
+  41
+0.85
+  50
+0.0
+  71
+     0
+  42
+2.5
+   3
+MS Gothic.ttf
+   4
+
+1001
+ACAD
+1000
+MS Gothic
+1071
+    32817
+   0
+ENDTAB
+   0
+TABLE
+   2
+VIEW
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     0
+   0
+ENDTAB
+   0
+TABLE
+   2
+UCS
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     0
+   0
+ENDTAB
+   0
+TABLE
+   2
+APPID
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     1
+   0
+APPID
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbRegAppTableRecord
+   2
+ACAD
+  70
+     0
+   0
+ENDTAB
+   0
+TABLE
+   2
+DIMSTYLE
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+ 100
+AcDbDimStyleTable
+   0
+ENDTAB
+   0
+TABLE
+   2
+BLOCK_RECORD
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTable
+  70
+     1
+   0
+BLOCK_RECORD
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbBlockTableRecord
+   2
+*Model_Space
+   0
+BLOCK_RECORD
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbBlockTableRecord
+   2
+*Paper_Space
+   0
+BLOCK_RECORD
+   5
+%%HNDLE%%
+ 100
+AcDbSymbolTableRecord
+ 100
+AcDbBlockTableRecord
+   2
+*Paper_Space0
+   0
+ENDTAB
+   0
+ENDSEC
+   0
+SECTION
+   2
+BLOCKS
+   0
+BLOCK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+   8
+0
+ 100
+AcDbBlockBegin
+   2
+*Model_Space
+   3
+*Model_Space
+   1
+
+   0
+ENDBLK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+   8
+0
+ 100
+AcDbBlockEnd
+   0
+BLOCK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+  67
+     1
+   8
+0
+ 100
+AcDbBlockBegin
+   2
+*Paper_Space
+   3
+*Paper_Space
+   1
+
+   0
+ENDBLK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+  67
+     1
+   8
+0
+ 100
+AcDbBlockEnd
+   0
+BLOCK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+   8
+0
+ 100
+AcDbBlockBegin
+   2
+*Paper_Space0
+   3
+*Paper_Space0
+   1
+
+   0
+ENDBLK
+   5
+%%HNDLE%%
+ 100
+AcDbEntity
+   8
+0
+ 100
+AcDbBlockEnd
+   0
+ENDSEC
+ 
