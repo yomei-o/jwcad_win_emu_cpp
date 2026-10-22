@@ -142,6 +142,21 @@ try {
   check(pdfs.length === 1 && fs.readFileSync(path.join(dl, pdfs[0])).subarray(0, 5).toString() === '%PDF-',
         'printing downloads a PDF (' + pdfs.join(',') + ')');
   console.log('note: ' + await ev("document.getElementById('note').textContent"));
+  // Other formats: ファイル → DXF形式で保存 / SFC形式で保存, 新規, OK.  The SFC
+  // goes through common_lib.dll, a guest DLL loaded from the virtual C:.
+  for (const [y, ext] of [[255, 'dxf'], [308, 'sfc']]) {
+    await click(66, 60); await sleep(800);
+    await click(95, y); await sleep(4000);
+    await click(412, 131); await sleep(2000);
+    await click(295, 290);
+    let names = '';
+    for (let i = 0; i < 60 && !names.includes('木造平面例.' + ext); i++) {
+      await sleep(1000);
+      names = await ev("[...document.querySelectorAll('#files tr.user td.name')].map((t) => t.textContent).join(',')");
+    }
+    await shot('web_save_' + ext + '.png');
+    check(names.includes('木造平面例.' + ext), 'saving as ' + ext.toUpperCase() + ' puts 木造平面例.' + ext + ' in the panel');
+  }
   console.log(logs.slice(-15).join('\n'));
 } finally {
   ws.close();

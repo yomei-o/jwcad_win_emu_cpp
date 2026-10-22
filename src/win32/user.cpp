@@ -243,6 +243,23 @@ uint32_t Gui::child_from_point(Window* parent, Point cp, bool all) {
     return 0;
 }
 
+void Gui::check_mouse_leave() {
+    // A window holding the capture keeps the mouse until it lets go.
+    if (!track_leave_hwnd || capture == track_leave_hwnd) return;
+    Window* w = win(track_leave_hwnd);
+    bool inside = false;
+    if (w && window_from_point(cursor_pos, false, true) == track_leave_hwnd) {
+        Rect r = track_leave_nc ? Rect{} : client_rect_screen(w);
+        inside = track_leave_nc || r.contains(cursor_pos.x, cursor_pos.y);
+    }
+    if (inside) return;
+    uint32_t h = track_leave_hwnd;
+    track_leave_hwnd = 0;
+    // Wine's toolbar forgets its hot button here; without it a checked tool
+    // button stayed "hot" and never got its dithered face.
+    if (w) post(h, track_leave_nc ? 0x02A2 /*WM_NCMOUSELEAVE*/ : 0x02A3 /*WM_MOUSELEAVE*/, 0, 0);
+}
+
 uint32_t Gui::window_from_point(Point sp, bool skip_disabled, bool hit_test) {
     Window* d = win(desktop);
     uint32_t hit = 0;
@@ -621,6 +638,7 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
         ev.type == HostEvent::MouseUp || ev.type == HostEvent::Wheel) {
         cursor_pos = {ev.x, ev.y};
         out.pt = cursor_pos;
+        check_mouse_leave();
         static const int vk[3] = {0x01, 0x02, 0x04};
         if (ev.type == HostEvent::MouseDown) key_state[vk[ev.button % 3]] = 0x80 | (key_state[vk[ev.button % 3]] ^ 1);
         if (ev.type == HostEvent::MouseUp) key_state[vk[ev.button % 3]] &= 0x7F;
@@ -3681,8 +3699,31 @@ void install_user(Emulator& e) {
         write_rect(e, A(e, 0), {0, 0, g.screen_w, g.screen_h});
         ret(e, 1);
     });
-    api(e, "TrackMouseEvent", 1, [](Emulator& e) { ret(e, 1); });
-    api(e, "_TrackMouseEvent", 1, [](Emulator& e) { ret(e, 1); });
+    // TRACKMOUSEEVENT: cbSize, dwFlags, hwndTrack, dwHoverTime.  Leave is
+    // tracked (check_mouse_leave); hover is accepted and not reported.
+    auto track_mouse = [](Emulator& e) {
+        Gui& g = gui(e);
+        uint64_t p = A(e, 0);
+        uint32_t flags = e.mem.read32(p + 4), hwnd = e.mem.read32(p + 8);
+        constexpr uint32_t TME_LEAVE = 2, TME_NONCLIENT = 0x10, TME_QUERY = 0x40000000, TME_CANCEL = 0x80000000;
+        if (flags & TME_QUERY) {
+            e.mem.write32(p + 4, g.track_leave_hwnd ? (TME_LEAVE | (g.track_leave_nc ? TME_NONCLIENT : 0)) : 0);
+            e.mem.write32(p + 8, g.track_leave_hwnd);
+            return ret(e, 1);
+        }
+        if (flags & TME_LEAVE) {
+            if (flags & TME_CANCEL) {
+                if (g.track_leave_hwnd == hwnd) g.track_leave_hwnd = 0;
+            } else if (g.win(hwnd)) {
+                g.track_leave_hwnd = hwnd;
+                g.track_leave_nc = (flags & TME_NONCLIENT) != 0;
+                g.check_mouse_leave();  // already outside: the message comes at once
+            }
+        }
+        ret(e, 1);
+    };
+    api(e, "TrackMouseEvent", 1, track_mouse);
+    api(e, "_TrackMouseEvent", 1, track_mouse);
     api(e, "SetCursor", 1, [](Emulator& e) {
         Gui& g = gui(e);
         uint32_t old = g.current_cursor;

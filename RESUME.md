@@ -87,6 +87,15 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
    SXF の DLL は Shift-JIS のパスを渡すので日本語名の SFC/P21 が壊れた。GUI 層で CP932 → W に置き換え
    （`Emulator::replace_hook`、`ansi.cpp` の末尾）。配布の図面 16 個すべてが一括変換で JWC/DXF/SFC/P21 になる
 
+9. **MoveFileW・ReplaceFileW・PathFileExistsW・PathIsDirectoryW** がパスを二重に変換していた
+   （FileTable の関数は自分で host_path する）。ファイル名変更が失敗、ネイティブで PathFileExists が常に偽。
+   INI・GetTempFileName・LoadImage の fopen は `FileTable::fopen_guest`（日本語パス）
+10. ブラウザ版でも DXF・SFC 保存を確認（`web_test.mjs` に追加。SFC は common_lib.dll を仮想 C: から読む）
+
+ほかに確認したもの：ファイル操作（比較・名前変更・削除・属性変更・図面情報コピー。送信は MAPI が無いので
+「メール システム サポートを読み込めません」= メールソフトの無い実機と同じ）、旧バージョン（Ver4.20）保存と読込、
+図形の配置、図形登録（.jws 書き出し）。
+
 調べるのに足した道具：
 
 * `-c` のトレースに呼び出し元（`[hook] Name <- 0x...`）
@@ -122,7 +131,11 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
 3. **基設（基本設定）のタブ**がただの文字列に見える（Wine comctl32 の SysTabControl32）。本物と比較
 4. **建平・建断・建立**のファイル選択が空。本物も空か確認
 5. **ホイールで拡大縮小しない**。本物の既定値も無効かもしれない。確認
-6. 押下中のツールバーボタン（「／」など）が本物は市松模様、こちらは単色（Wine の imagelist がアルファ扱いしている疑い）
+6. 押下中のツールバーボタン（「／」など）が本物は市松模様、こちらは単色。調べた所：左のパレットは Wine の
+   ToolbarWindow32（TBSTYLE_FLAT なし、テーマなし）。Wine は CDIS_CHECKED かつ非 hot のときだけ
+   TOOLBAR_DrawPattern（55AA のパターンブラシで PatBlt）を呼ぶが、呼ばれていない＝ボタンが CHECKED になっていない
+   らしい（MFC は DefWindowProc 経由で TB_SETSTATE を送るので JWEMU_TRACE_MSG に出ない）。パターンブラシ自体は正しい。
+   TrackMouseEvent（WM_MOUSELEAVE）は実装した
 7. メニューなどの文字幅：本物は Yu Gothic UI。代わりのフォントが横に広い（「ファイル(F)」本物 46px / こちら 60px）
 8. 未実装 import の一覧：`--script` に `4000 dump` の 1 行を書くと `[unimplemented]` で出る。
    OLE 埋め込み・メタファイル（CreateMetaFile 等）・PolyBezierTo・GdiAlphaBlend など。使われた時に実装

@@ -494,6 +494,11 @@ public:
     Point last_click_pt;
     int last_click_button = -1;
     uint32_t last_click_hwnd = 0;
+    // TrackMouseEvent(TME_LEAVE): the window told when the mouse leaves it
+    // (its client area, or the whole window with TME_NONCLIENT).
+    uint32_t track_leave_hwnd = 0;
+    bool track_leave_nc = false;
+    void check_mouse_leave();
 
     uint64_t send(uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t lp);
     uint64_t call_wndproc(uint64_t proc, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t lp);
