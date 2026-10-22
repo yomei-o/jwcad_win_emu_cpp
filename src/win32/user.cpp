@@ -672,6 +672,11 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
             if (w && (w->style & WS_DISABLED)) {
                 return false;
             }
+            // Nor does anything inside a disabled window: while a message box
+            // has its owner disabled, a click on the owner's toolbar must not
+            // run the command (Jw_cad saved a drawing behind an open box).
+            for (Window* a = w; a; a = (a->style & WS_CHILD) ? win(a->parent) : nullptr)
+                if (a->style & WS_DISABLED) return false;
             ht = static_cast<int16_t>(send(target, WM_NCHITTEST, 0, make_lparam(ev.x, ev.y)));
             while (ht == HTTRANSPARENT) {
                 Window* tw = win(target);

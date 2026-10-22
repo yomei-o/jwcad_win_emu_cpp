@@ -166,7 +166,7 @@ T = {
                          ('L', (300, 250)), ('wait', 2000), ('shot', 'placed')],
     'image_embed': [('allow_msgbox',), ('put', 'tests/io/pic.bmp', 'pic.bmp'), ('env', 'JWEMU_OPEN', r'C:\jww\pic.bmp'), ('menu', '編集'),
                     ('L', (170, 414)), ('wait', 1500), ('L', (68, 88)), ('wait', 2500), ('L', (300, 250)), ('wait', 2000),
-                    ('L', (577, 88)), ('wait', 2500), ('shot', 'embed'), ('key', 13), ('wait', 1500), ('shot', 'embed2'),
+                    ('L', (577, 88)), ('wait', 2500), ('shot', 'embed'), ('key', 13), ('wait', 1500), ('shot', 'embed2'), ('key', 13), ('wait', 1000),
                     ('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'EMB'), ('L', (295, 290)),
                     ('wait', 5000), ('shot', 'saved')],
     'image_embedded_open': [('put', 'tests/io/embedded_bmp.jww', 'EMB.jww'), ('arg', 'EMB.jww'), ('wait', 2000), ('shot', 'opened')],
