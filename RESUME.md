@@ -97,6 +97,11 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
 13. TrackMouseEvent（WM_MOUSELEAVE）を実装（stub だった）
 14. DXF の読み込みで Jw_cad 側の仕様と思われるもの（本物で未確認）：SPLINE・模様 HATCH・3DFACE・DIMENSION の線が出ない、
     TEXT の揃え（72/11）が効かない、LAYER/LTYPE 表の無い DXF は線がすべて点線になる
+15. **日本語を含むパス**でネイティブ版が起動できなかった（std::fopen に UTF-8）→ `FileTable::fopen_host`
+16. `tools/opencheck.py`：配布 16 図面の一括変換結果 64 個を開く。全部開くが、Ａマンション平面例.sfc/.p21 は
+    非常に遅い：SXF の塗り（fill_area_style_colour_feature 79 個）を Jw_cad が 0.13 間隔の線で埋める
+    （0x678410、1 つの塗りで約 4600 本、毎回 ESC を PeekMessage で確認）。エミュレータの速度の問題で、
+    正しさの問題ではない。Test7.p21・天空率表.p21（2.6MB/4.1MB）も数分かかる
 10. ブラウザ版でも DXF・SFC 保存を確認（`web_test.mjs` に追加。SFC は common_lib.dll を仮想 C: から読む）
 
 ほかに確認したもの：ファイル操作（比較・名前変更・削除・属性変更・図面情報コピー。送信は MAPI が無いので
