@@ -28,7 +28,7 @@ EXE = os.path.join(ROOT, 'jwemu.exe')
 B = {
     '点': (46, 121), '接線': (46, 143), '接円': (46, 165), 'ハッチ': (46, 192), '建平': (46, 219), '建断': (46, 241),
     '建立': (46, 263), '多角形': (46, 290), '曲線': (46, 312), '包絡': (46, 348), '分割': (46, 370), '整理': (46, 392),
-    '属変': (46, 414), '図形': (46, 575), '図登': (46, 597), '記変': (46, 619), '座標': (46, 641), '外変': (46, 667),
+    '属変': (46, 414), 'BL化': (46, 441), 'BL解': (46, 463), '図形': (46, 575), '図登': (46, 597), '記変': (46, 619), '座標': (46, 641), '外変': (46, 667),
     '／': (85, 121), '□': (85, 143), '○': (85, 165), '文字': (85, 192), '寸法': (85, 214), '2線': (85, 241),
     '中心線': (85, 263), '連線': (85, 285), 'AUTO': (85, 312), '範囲': (85, 348), '複線': (85, 375),
     'コーナー': (85, 397), '伸縮': (85, 419), '面取': (85, 441), '消去': (85, 463), '複写': (85, 490),
@@ -288,6 +288,20 @@ T = {
     'd_hatch': [('btn', '□'), ('L', (150, 150)), ('L', (350, 300)), ('btn', 'ハッチ'), ('L', (150, 200)), ('L', (250, 150)),
                 ('L', (350, 250)), ('L', (250, 300)), ('L', (150, 200)), ('wait', 500), ('shot', 'picked'),
                 ('L', (52, 88)), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'LINE': 4})],
+    'd_arc': [('btn', '○'), ('L', (45, 88)), ('L', (300, 300)), ('L', (400, 300)), ('L', (300, 200)), ('wait', 500),
+              ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'ARC': 1})],
+    'd_range_erase': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', '消去'), ('wait', 1500),
+                      ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_lt', {'LINE': -100})],
+    'd_text_move': [('btn', '文字'), ('L', (418, 507)), ('wait', 500), ('L', (200, 250)), ('wait', 800), ('shot', 'drawn'),
+                    ('dxf', 'OUT'), ('expect', {'TEXT': 0}), ('expect_diff',)],
+    'd_envelope': [('btn', '□'), ('L', (150, 150)), ('L', (300, 300)), ('L', (250, 250)), ('L', (400, 400)), ('btn', '包絡'),
+                   ('L', (130, 130)), ('L', (420, 420)), ('wait', 1000), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_diff',)],
+    'd_block': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', 'BL化'), ('wait', 1500),
+                ('text', 'HOUSE'), ('key', 13), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'INSERT': 1}),
+                ('expect_lt', {'LINE': -100})],
+    # 属変: (L) on a line moves it to the layer being written (書込みレイヤに変更 is on).
+    'd_attr_change': [('btn', '属変'), ('L', 'wall_bottom'), ('wait', 1000), ('shot', 'drawn'), ('dxf', 'OUT'),
+                      ('expect', {'LINE': 0}), ('expect_diff',)],
     'd_auto': [('btn', 'AUTO'), ('L', 'empty1'), ('L', 'empty2'), ('wait', 500), ('shot', 'drawn'), ('dxf', 'OUT'),
                ('expect_diff',)],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
@@ -511,6 +525,10 @@ def run_test(name, drive):
                 for k, v in e[1].items():
                     if not delta.get(k, 0) > v:
                         checks.append(f'{k}: expected more than {v:+d}, got {delta.get(k, 0):+d} (all changes: {delta})')
+            elif e[0] == 'expect_lt':
+                for k, v in e[1].items():
+                    if not delta.get(k, 0) < v:
+                        checks.append(f'{k}: expected less than {v:+d}, got {delta.get(k, 0):+d} (all changes: {delta})')
             elif e[0] == 'expect_diff':
                 body = lambda p: open(p, 'rb').read().split(b'ENTITIES', 1)[-1]
                 if body(saved) == body(os.path.join(OUT, 'dxf_baseline', 'BASE.dxf')):
