@@ -150,7 +150,11 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
    TOOLBAR_DrawPattern（comctl32 内 0x6009EB63 の PatBlt PATCOPY）も呼ばれている。つまり市松を描いた後に
    ボタンの絵が不透明に上書きしている。Wine の ImageList は 32bpp のビットマップを add_with_alpha で取り込み、
    GetDIBits のアルファが 0 ならマスク（ImageList_AddMasked が clrBtnFace で作る）で背景を抜く。
-   次はマスク（色→モノクロ BitBlt）か描画（ImageList_DrawIndirect）のどちらで抜けないかを確かめる。
+   ImageList_DrawIndirect は透明の道（黒で塗る→SRCAND マスク→SRCPAINT 絵→画面に SRCAND マスク→SRCPAINT）を通っている。
+   それで絵の背景 F0F0F0 がそのまま出る＝**マスクが全部 0**。原因は (a) ImageList_AddMasked の色→モノクロ BitBlt
+   （SetBkColor(clrBtnFace) の画素を 1 にする）が 1 を作っていない、か (b) Jw_cad/MFC がマスク無しの
+   イメージリストを TB_SETIMAGELIST で渡している、のどちらか。次はイメージリストのマスクを書き出して確かめる。
+   なお Jw_win.exe のマニフェストに Common-Controls 6.0 は無い（本物もクラシック表示）。基設のタブもクラシックの見た目で正しいはず
    TrackMouseEvent（WM_MOUSELEAVE）は実装した
 7. メニューなどの文字幅：本物は Yu Gothic UI。代わりのフォントが横に広い（「ファイル(F)」本物 46px / こちら 60px）
 8. 未実装 import の一覧：`--script` に `4000 dump` の 1 行を書くと `[unimplemented]` で出る。
