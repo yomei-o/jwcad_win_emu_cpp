@@ -14,12 +14,15 @@ constexpr int kBtnW = 36;  // caption button width (classic-ish, narrower than W
 
 bool has_caption(const Window* w) { return (w->style & WS_CAPTION) == WS_CAPTION; }
 
-int frame_width(const Window* w) {
-    if (w->style & WS_THICKFRAME) return kThickFrame;
-    if ((w->style & WS_DLGFRAME) || (w->exstyle & WS_EX_DLGMODALFRAME)) return kDlgFrame;
-    if (w->style & WS_BORDER) return 1;
-    return 0;
-}
+int frame_width(const Window* w) { return frame_for_style(w->style, w->exstyle); }
+
+// The Windows 11 caption: flat, the full height of the top inset.
+// flat(): drawn in the Windows 11 style.  modern(): also framed by DWM's
+// invisible border, so the caption starts at the top edge (a maximised
+// window has its frame pushed off the screen instead).
+bool flat(const Window* w) { return dwm_frame(w->style, w->exstyle); }
+bool modern(const Window* w) { return flat(w) && !w->maximized; }
+constexpr uint32_t kCaptionBg = 0xF3F3F3;
 
 int edge_width(const Window* w) {
     int e = 0;
@@ -49,7 +52,25 @@ NcLayout layout(Gui& g, Window* w) {
     int f = frame_width(w);
     int top = f;
     int ch = caption_height(w);
-    if (ch) {
+    if (ch && flat(w)) {
+        // Measured on Windows 11: the caption runs from the top edge to the
+        // client, buttons are 46 wide (45 for maximise and minimise), and a
+        // window with only a close button gets a narrower one.
+        int ct = modern(w) ? 0 : f, cb = f + ch;
+        L.caption = {f, ct, W - f, cb};
+        if (w->style & WS_SYSMENU) {
+            bool boxes = (w->style & (WS_MAXIMIZEBOX | WS_MINIMIZEBOX)) && !(w->exstyle & WS_EX_TOOLWINDOW);
+            int cw = boxes ? 46 : 32;
+            L.close_btn = {W - f - cw, ct, W - f, cb};
+            if (boxes) {
+                L.max_btn = {L.close_btn.l - 45, ct, L.close_btn.l, cb};
+                L.min_btn = {L.max_btn.l - 45, ct, L.max_btn.l, cb};
+            }
+            if (!(w->exstyle & (WS_EX_TOOLWINDOW | WS_EX_DLGMODALFRAME)))
+                L.sys_btn = {f, ct, f + 30, cb};
+        }
+        top += ch;
+    } else if (ch) {
         L.caption = {f, f, W - f, f + ch};
         int bh = ch - 2;
         int x = W - f - 1;
@@ -128,7 +149,69 @@ void draw_caption_button(Gui& g, uint32_t hdc, const Rect& r, int kind, bool act
     }
 }
 
+// The Windows 11 caption glyphs, 10x10 from the top-left of the glyph box,
+// as measured: '#' full ink, '+' half (the antialiased edge).
+const char* const kGlyphClose[10] = {"#+      +#", "+#+    +#+", " +#+  +#+ ", "  +#++#+  ", "   +##+   ",
+                                     "   +##+   ", "  +#++#+  ", " +#+  +#+ ", "+#+    +#+", "#+      +#"};
+const char* const kGlyphMax[10] = {"+########+", "#        #", "#        #", "#        #", "#        #",
+                                   "#        #", "#        #", "#        #", "#        #", "+########+"};
+const char* const kGlyphRestore[10] = {"  +######+", "  #      #", "+#######+#", "#       ##", "#       ##",
+                                       "#       ##", "#       #+", "#       # ", "#       # ", "+#######+ "};
+const char* const kGlyphMin[10] = {"", "", "", "", "", "##########", "", "", "", ""};
+
+uint32_t mix(uint32_t bg, uint32_t fg, int a256) {
+    auto ch = [&](int s) {
+        uint32_t b = (bg >> s) & 0xFF, f = (fg >> s) & 0xFF;
+        return ((b * static_cast<uint32_t>(256 - a256) + f * static_cast<uint32_t>(a256)) >> 8) << s;
+    };
+    return ch(0) | ch(8) | ch(16);
+}
+
+// state: 0 normal, 1 under the mouse, 2 held down.  Colours are COLORREFs.
+void draw_flat_button(Gui& g, uint32_t hdc, const Rect& r, int kind, bool active, bool enabled, int state,
+                      bool maximized) {
+    uint32_t bg = kCaptionBg, ink = active ? 0x171818 : 0x999999;
+    if (!enabled) ink = 0xC0C0C0;
+    if (state && enabled) {
+        if (kind == 0) {
+            bg = state == 2 ? 0x323FC8 : 0x1C2BC4;  // #C83F32 held, #C42B1C hot
+            ink = 0xFFFFFF;
+        } else {
+            bg = state == 2 ? 0xCCCCCC : 0xE5E5E5;
+        }
+    }
+    draw::fill_rect(g, hdc, r, bg);
+    const char* const* glyph = kind == 0 ? kGlyphClose : kind == 2 ? kGlyphMin : (maximized ? kGlyphRestore : kGlyphMax);
+    int x0 = r.l + (r.w() == 32 ? 12 : 18), y0 = r.t + (r.h() >= 31 ? 10 : (r.h() - 10) / 2);
+    for (int y = 0; y < 10; ++y)
+        for (int x = 0; glyph[y][x]; ++x) {
+            if (glyph[y][x] == ' ') continue;
+            draw::fill_rect(g, hdc, {x0 + x, y0 + y, x0 + x + 1, y0 + y + 1}, mix(bg, ink, glyph[y][x] == '#' ? 256 : 120));
+        }
+}
+
+int button_state(Gui& g, const Window* w, int ht) {
+    if (g.nc_hot_hwnd != w->hwnd || g.nc_hot_ht != ht) return 0;
+    return g.nc_hot_pressed ? 2 : 1;
+}
+
 }  // namespace
+
+void nc_set_hot(Gui& g, uint32_t hwnd, int ht, bool pressed) {
+    if (ht != HTCLOSE && ht != HTMAXBUTTON && ht != HTMINBUTTON) {
+        hwnd = 0;
+        ht = 0;
+        pressed = false;
+    }
+    if (hwnd == g.nc_hot_hwnd && ht == g.nc_hot_ht && pressed == g.nc_hot_pressed) return;
+    uint32_t old = g.nc_hot_hwnd;
+    g.nc_hot_hwnd = hwnd;
+    g.nc_hot_ht = ht;
+    g.nc_hot_pressed = pressed;
+    if (Window* ow = g.win(old)) nc_paint(g, ow, nullptr);
+    if (hwnd != old)
+        if (Window* nw = g.win(hwnd)) nc_paint(g, nw, nullptr);
+}
 
 void nc_calc(Gui& g, Window* w, Rect& client) {
     // `client` comes in as the window rectangle (parent coordinates).
@@ -154,7 +237,9 @@ int nc_hittest(Gui& g, Window* w, Point sp) {
     NcLayout L = layout(g, w);
     if ((w->style & WS_THICKFRAME) && !w->maximized) {
         int f = kThickFrame, corner = 16;
-        bool left = p.x < f, right = p.x >= W - f, top = p.y < f, bottom = p.y >= H - f;
+        // With the Windows 11 caption reaching the top edge, only its first
+        // few rows resize.
+        bool left = p.x < f, right = p.x >= W - f, top = p.y < (modern(w) ? 5 : f), bottom = p.y >= H - f;
         if (top) return p.x < corner ? HTTOPLEFT : (p.x >= W - corner ? HTTOPRIGHT : HTTOP);
         if (bottom) return p.x < corner ? HTBOTTOMLEFT : (p.x >= W - corner ? HTBOTTOMRIGHT : HTBOTTOM);
         if (left) return p.y < corner ? HTTOPLEFT : (p.y >= H - corner ? HTBOTTOMLEFT : HTLEFT);
@@ -192,8 +277,13 @@ void nc_paint(Gui& g, Window* w, const Region*) {
     NcLayout L = layout(g, w);
     int W = wr.w(), H = wr.h();
     bool active = g.active == w->hwnd || (g.toplevel_of(w) && g.toplevel_of(w)->hwnd == g.active);
+    if (w->nc_active >= 0) active = w->nc_active != 0;
     int f = frame_width(w);
-    if (f) {
+    if (flat(w)) {
+        // DWM's frame: everything outside the client is caption-coloured; the
+        // compositor leaves out the invisible edges and draws the border.
+        draw::fill_rect(g, hdc, {0, 0, W, H}, kCaptionBg);
+    } else if (f) {
         Rect outer{0, 0, W, H};
         if (f == 1) {
             draw::frame_rect(g, hdc, outer, g.sys_color(6));  // COLOR_WINDOWFRAME
@@ -203,7 +293,26 @@ void nc_paint(Gui& g, Window* w, const Region*) {
             edge_rect(g, hdc, {1, 1, W - 1, H - 1}, g.sys_color(20), g.sys_color(16));
         }
     }
-    if (!L.caption.empty()) {
+    if (!L.caption.empty() && flat(w)) {
+        int tx = L.caption.l + 10;  // a dialog's title starts 10 in
+        if (!L.sys_btn.empty()) {
+            uint32_t icon = w->icon_small ? w->icon_small : (w->cls ? static_cast<uint32_t>(w->cls->icon_sm ? w->cls->icon_sm : w->cls->icon) : 0);
+            int iy = L.caption.t + (L.caption.h() - 16) / 2;
+            if (icon) draw::draw_icon(g, hdc, L.caption.l + 8, iy, icon, 16, 16);
+            tx = L.caption.l + 30;
+        }
+        draw::select_font(g, hdc, g.ui_font ? g.ui_font : default_gui_font(g));
+        int right = L.min_btn.empty() ? (L.close_btn.empty() ? L.caption.r : L.close_btn.l) : L.min_btn.l;
+        Rect tr{tx, L.caption.t + 1, right - 4, L.caption.b};
+        d->s.text_color = active ? 0x000000 : 0x999999;
+        d->s.bk_mode = 1;
+        draw_text_impl(g, hdc, w->text, tr, 0x20 | 0x4 | 0x800 | 0x8000);  // SINGLELINE|VCENTER|NOPREFIX|END_ELLIPSIS
+        if (!L.close_btn.empty()) draw_flat_button(g, hdc, L.close_btn, 0, active, true, button_state(g, w, HTCLOSE), false);
+        if (!L.max_btn.empty())
+            draw_flat_button(g, hdc, L.max_btn, 1, active, (w->style & WS_MAXIMIZEBOX) != 0, button_state(g, w, HTMAXBUTTON), w->maximized);
+        if (!L.min_btn.empty())
+            draw_flat_button(g, hdc, L.min_btn, 2, active, (w->style & WS_MINIMIZEBOX) != 0, button_state(g, w, HTMINBUTTON), false);
+    } else if (!L.caption.empty()) {
         uint32_t cap = active ? g.sys_color(2) : g.sys_color(3);  // COLOR_(IN)ACTIVECAPTION
         uint32_t txt = active ? g.sys_color(9) : g.sys_color(19);
         draw::fill_rect(g, hdc, L.caption, cap);
@@ -466,6 +575,7 @@ static void move_size_loop(Gui& g, uint32_t hwnd, int ht, Point start) {
 static bool track_caption_button(Gui& g, Window* w, int ht) {
     uint32_t hwnd = w->hwnd;
     bool done = false, inside = true;
+    nc_set_hot(g, hwnd, ht, true);
     while (!done) {
         g.present_now();
         g.pump_host(-1);
@@ -476,6 +586,7 @@ static bool track_caption_button(Gui& g, Window* w, int ht) {
             if (!ww) return false;
             if (ev.type == HostEvent::MouseMove) {
                 inside = nc_hittest(g, ww, {ev.x, ev.y}) == ht;
+                nc_set_hot(g, inside ? hwnd : 0, inside ? ht : 0, inside);
             } else if (ev.type == HostEvent::MouseUp) {
                 inside = nc_hittest(g, ww, {ev.x, ev.y}) == ht;
                 g.key_state[1] &= 0x7F;
@@ -484,6 +595,7 @@ static bool track_caption_button(Gui& g, Window* w, int ht) {
             }
         }
     }
+    nc_set_hot(g, 0, 0, false);
     return inside;
 }
 
@@ -519,6 +631,9 @@ uint64_t def_window_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint6
             nc_paint(g, w, nullptr);
             return 0;
         case WM_NCACTIVATE:
+            // The caption follows wParam, not the active window: the message
+            // arrives before activation has moved.
+            w->nc_active = wp ? 1 : 0;
             if (has_caption(w)) nc_paint(g, w, nullptr);
             return 1;
         case WM_PAINT: {
@@ -532,7 +647,12 @@ uint64_t def_window_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint6
             uint64_t br = w->cls ? w->cls->background : 0;
             if (!br) return 0;
             if (br <= 31) br = get_sys_color_brush(g, static_cast<int>(br - 1));
-            draw::fill_rect_brush(g, static_cast<uint32_t>(wp), {0, 0, w->crect.w(), w->crect.h()}, static_cast<uint32_t>(br));
+            // As Windows does: the clip box, so a window DC passed in (MFC's
+            // EraseNonClient) gets its frame erased too - except for a
+            // CS_PARENTDC class, whose clip is the parent's.
+            Rect r = (w->cls && (w->cls->style & 0x80)) ? Rect{0, 0, w->crect.w(), w->crect.h()}
+                                                         : dc_clip_box(g, static_cast<uint32_t>(wp));
+            draw::fill_rect_brush(g, static_cast<uint32_t>(wp), r, static_cast<uint32_t>(br));
             return 1;
         }
         case WM_SETTEXT: {

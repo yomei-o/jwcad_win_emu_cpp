@@ -217,7 +217,7 @@ uint32_t load_menu_resource(Gui& g, uint64_t hinst, uint64_t name) {
 
 namespace {
 
-uint32_t menu_font(Gui& g) { return default_gui_font(g); }
+uint32_t menu_font(Gui& g) { return g.ui_font ? g.ui_font : default_gui_font(g); }
 
 std::pair<std::u16string, std::u16string> split_accel(const std::u16string& s) {
     size_t t = s.find(u'\t');
@@ -306,23 +306,29 @@ void draw_item_text(Gui& g, uint32_t hdc, const Rect& r, const std::u16string& t
 int menu_bar_layout(Gui& g, Window* w, int width) {
     Menu* m = g.menu(w->menu);
     if (!m) return 0;
+    // Rows of SM_CYMENU - 1 pixels and a line under the last: 20 for one row,
+    // as on Windows.
+    const int rh = kMenuH - 1;
     int x = 0, y = 0, rows = 1;
     for (auto& it : m->items) {
         int iw = (it.type & MFT_SEPARATOR) ? 8 : text_w(g, it.text) + 16;
         if (x + iw > width && x > 0) {
             x = 0;
-            y += kMenuH;
+            y += rh;
             ++rows;
         }
-        it.rect = {x, y, x + iw, y + kMenuH};
+        it.rect = {x, y, x + iw, y + rh};
         x += iw;
     }
-    return rows * kMenuH + 1;
+    return rows * rh + 1;
 }
 
 void menu_bar_draw(Gui& g, Window* w, uint32_t hdc, const Rect& bar) {
     Menu* m = g.menu(w->menu);
-    draw::fill_rect(g, hdc, bar, g.sys_color(4));  // COLOR_MENU
+    // The themed menu bar of Windows 10/11: white, a faint line, then the
+    // 3D-face line the client starts under.
+    draw::fill_rect(g, hdc, bar, 0xFFFFFF);
+    draw::fill_rect(g, hdc, {bar.l, bar.b - 2, bar.r, bar.b - 1}, 0xF2F2F2);
     draw::fill_rect(g, hdc, {bar.l, bar.b - 1, bar.r, bar.b}, g.sys_color(15));
     if (!m) return;
     draw::select_font(g, hdc, menu_font(g));
@@ -336,10 +342,14 @@ void menu_bar_draw(Gui& g, Window* w, uint32_t hdc, const Rect& bar) {
         bool grayed = (it.state & (MF_GRAYED | MF_DISABLED)) != 0;
         uint32_t tc = grayed ? g.sys_color(17) : g.sys_color(7);
         if (static_cast<int>(i) == sel) {
-            draw::fill_rect(g, hdc, r, g.sys_color(13));  // COLOR_HIGHLIGHT
-            tc = g.sys_color(14);
+            // The themed selection: pale blue with a blue edge (COLORREFs).
+            draw::fill_rect(g, hdc, r, 0xFFE8CC);
+            draw::frame_rect(g, hdc, r, 0xFFD199);
         }
-        draw_item_text(g, hdc, r, it.text, tc, 0x1 | 0x20 | 0x4);  // CENTER|SINGLELINE|VCENTER
+        // Access-key underlines stay hidden until the keyboard is used, as
+        // Windows has them by default.
+        uint32_t hide = g.menu_keyboard ? 0 : 0x100000;  // DT_HIDEPREFIX
+        draw_item_text(g, hdc, r, it.text, tc, 0x1 | 0x20 | 0x4 | hide);  // CENTER|SINGLELINE|VCENTER
     }
 }
 
@@ -431,7 +441,7 @@ void paint_popup(Gui& g, uint32_t hwnd, uint32_t hdc) {
         if (it.state & MF_CHECKED) draw_check(g, hdc, r.l + 12, (r.t + r.b) / 2, tc, (it.type & MFT_RADIOCHECK) != 0);
         auto [text, acc] = split_accel(it.text);
         Rect tr{r.l + kCheckW, r.t, r.r - kArrowW, r.b};
-        draw_item_text(g, hdc, tr, text, tc, 0x20 | 0x4);
+        draw_item_text(g, hdc, tr, text, tc, 0x20 | 0x4 | (g.menu_keyboard ? 0 : 0x100000));
         if (!acc.empty()) draw_item_text(g, hdc, tr, acc, tc, 0x20 | 0x4 | 0x2 | 0x800);
         if (it.submenu) {
             int cx = r.r - 10, cy = (r.t + r.b) / 2;
@@ -566,7 +576,7 @@ int bar_item_at(Gui& g, Window* w, Point sp) {
     Rect wr = g.window_rect_screen(w);
     // The bar starts after the frame and caption; menu_bar_layout put the
     // item rectangles relative to the bar.
-    int f = (w->style & WS_THICKFRAME) ? kThickFrame : (((w->style & WS_DLGFRAME) || (w->exstyle & WS_EX_DLGMODALFRAME)) ? kDlgFrame : ((w->style & WS_BORDER) ? 1 : 0));
+    int f = frame_for_style(w->style, w->exstyle);
     int top = f + (((w->style & WS_CAPTION) == WS_CAPTION) ? kCaptionH : 0);
     for (size_t i = 0; i < m->items.size(); ++i)
         if (m->items[i].rect.offset(wr.l + f, wr.t + top).contains(sp.x, sp.y)) return static_cast<int>(i);
@@ -576,7 +586,7 @@ int bar_item_at(Gui& g, Window* w, Point sp) {
 Rect bar_item_screen(Gui& g, Window* w, int idx) {
     Menu* m = g.menu(w->menu);
     Rect wr = g.window_rect_screen(w);
-    int f = (w->style & WS_THICKFRAME) ? kThickFrame : (((w->style & WS_DLGFRAME) || (w->exstyle & WS_EX_DLGMODALFRAME)) ? kDlgFrame : ((w->style & WS_BORDER) ? 1 : 0));
+    int f = frame_for_style(w->style, w->exstyle);
     int top = f + (((w->style & WS_CAPTION) == WS_CAPTION) ? kCaptionH : 0);
     return m->items[static_cast<size_t>(idx)].rect.offset(wr.l + f, wr.t + top);
 }

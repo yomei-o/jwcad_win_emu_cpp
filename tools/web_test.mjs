@@ -108,7 +108,7 @@ try {
   };
   await click(940, 146); await sleep(4000);
   await click(410, 330, 2); await sleep(3000);
-  await click(639, 438); await sleep(4000);  // いいえ to keeping the earlier line
+  await click(639, 448); await sleep(4000);  // いいえ to keeping the earlier line
   await click(85, 124); await sleep(300);
   await click(200, 200); await sleep(300);
   await click(800, 250); await sleep(500);

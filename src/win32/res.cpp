@@ -1,6 +1,7 @@
 // Resources the GUI loads: bitmaps, icons and cursors, strings; and the
 // user32 drawing helpers that paint frames and edges.
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "files.h"
@@ -97,6 +98,66 @@ uint32_t new_cursor(Gui& g, std::unique_ptr<Cursor> c) {
     return h;
 }
 
+// The message box icons in the Windows 11 manner: a red disc with a white
+// cross (IDI_HAND), blue discs with a white "?" or "i" (IDI_QUESTION,
+// IDI_ASTERISK) and a yellow triangle with a black "!" (IDI_EXCLAMATION).
+// Shapes are tested at 4x4 points per pixel for smooth edges.
+void draw_message_icon(Cursor& c, int id) {
+    auto inside_shape = [&](double x, double y) -> int {
+        // 0 outside, 1 the base shape, 2 the mark on top of it.
+        double cx = 16, cy = 16;
+        if (id == 32515) {  // exclamation: a rounded triangle
+            double top = 3, bottom = 29, half = 14;
+            if (y < top || y > bottom) return 0;
+            double w = half * (y - top) / (bottom - top);
+            if (std::abs(x - cx) > w + 0.5) return 0;
+            bool bar = std::abs(x - cx) <= 1.6 && y >= 11 && y <= 21;
+            bool dot = (x - cx) * (x - cx) + (y - 25) * (y - 25) <= 2.4 * 2.4;
+            return bar || dot ? 2 : 1;
+        }
+        double dx = x - cx, dy = y - cy;
+        if (dx * dx + dy * dy > 14.5 * 14.5) return 0;
+        if (id == 32513) {  // hand: a cross
+            double u = (dx + dy) / 1.41421356, v = (dx - dy) / 1.41421356;
+            bool cross = (std::abs(u) <= 1.6 && std::abs(v) <= 7.5) || (std::abs(v) <= 1.6 && std::abs(u) <= 7.5);
+            return cross ? 2 : 1;
+        }
+        if (id == 32516) {  // asterisk: an "i"
+            bool stem = std::abs(dx) <= 1.7 && dy >= -3 && dy <= 8;
+            bool dot = dx * dx + (dy + 7.5) * (dy + 7.5) <= 2.2 * 2.2;
+            return stem || dot ? 2 : 1;
+        }
+        // question: a "?" - an arc, a short stem and a dot
+        double r = std::sqrt(dx * dx + (dy + 3.5) * (dy + 3.5));
+        double ang = std::atan2(dy + 3.5, dx);
+        bool arc = std::abs(r - 5) <= 1.7 && (ang < 1.1 || ang > 2.6 || dy + 3.5 < 0) && !(dx < 0 && dy + 3.5 > 0);
+        bool stem = std::abs(dx) <= 1.7 && dy >= 1.5 && dy <= 4.5;
+        bool dot = dx * dx + (dy - 8) * (dy - 8) <= 2.1 * 2.1;
+        return arc || stem || dot ? 2 : 1;
+    };
+    uint32_t base = id == 32513 ? 0xD13438u : id == 32515 ? 0xFFC83Du : 0x0067C0u;
+    uint32_t mark = id == 32515 ? 0x000000u : 0xFFFFFFu;
+    for (int y = 0; y < 32; ++y)
+        for (int x = 0; x < 32; ++x) {
+            int n_base = 0, n_mark = 0;
+            for (int sy = 0; sy < 4; ++sy)
+                for (int sx = 0; sx < 4; ++sx) {
+                    int k = inside_shape(x + (sx + 0.5) / 4.0, y + (sy + 0.5) / 4.0);
+                    if (k == 1) ++n_base;
+                    if (k == 2) ++n_mark;
+                }
+            int n = n_base + n_mark;
+            if (!n) continue;
+            auto ch = [&](int sh) {
+                uint32_t v = (((base >> sh) & 0xFF) * static_cast<uint32_t>(n_base) + ((mark >> sh) & 0xFF) * static_cast<uint32_t>(n_mark)) /
+                             static_cast<uint32_t>(n);
+                return v << sh;
+            };
+            uint32_t a = static_cast<uint32_t>(n * 255 / 16);
+            c.color[static_cast<size_t>(y) * 32 + x] = (a << 24) | ch(0) | ch(8) | ch(16);
+        }
+}
+
 // Draws the stock cursors and icons the system would supply.
 std::unique_ptr<Cursor> make_system_cursor(int id, bool icon) {
     auto c = std::make_unique<Cursor>();
@@ -107,6 +168,10 @@ std::unique_ptr<Cursor> make_system_cursor(int id, bool icon) {
     auto px = [&](int x, int y, uint32_t v) {
         if (x >= 0 && y >= 0 && x < 32 && y < 32) c->color[static_cast<size_t>(y) * 32 + x] = v;
     };
+    if (icon && id >= 32513 && id <= 32516) {
+        draw_message_icon(*c, id);
+        return c;
+    }
     if (icon) {
         // A plain application icon: a framed window.
         for (int y = 4; y < 28; ++y)
@@ -220,31 +285,51 @@ std::u16string load_string(Gui& g, uint64_t hinst, uint32_t id) {
 namespace draw {
 
 void edge(Gui& g, uint32_t hdc, Rect r, uint32_t edge_flags, uint32_t flags) {
-    // BDR_RAISEDOUTER 1, BDR_SUNKENOUTER 2, BDR_RAISEDINNER 4, BDR_SUNKENINNER 8
-    uint32_t light = g.sys_color(20), hilight = g.sys_color(22), shadow = g.sys_color(16), dark = g.sys_color(21);
+    // Which system colour each line takes, indexed by the edge's four BDR_
+    // bits, as user32 has them (a lone inner edge sits in the outer column);
+    // BF_SOFT swaps the top-left pair - a toolbar's buttons are drawn soft,
+    // white outside and light grey inside.
+    enum { HI = 20, LT = 22, SH = 16, DK = 21, NO = -1 };
+    static const int lt_inner[16] = {NO, NO, NO, NO, NO, HI, HI, NO, NO, DK, DK, NO, NO, NO, NO, NO};
+    static const int lt_outer[16] = {NO, LT, SH, NO, HI, LT, SH, NO, DK, LT, SH, NO, NO, LT, SH, NO};
+    static const int rb_inner[16] = {NO, NO, NO, NO, NO, SH, SH, NO, NO, LT, LT, NO, NO, NO, NO, NO};
+    static const int rb_outer[16] = {NO, DK, HI, NO, SH, DK, HI, NO, LT, DK, HI, NO, NO, DK, HI, NO};
+    static const int lt_inner_soft[16] = {NO, NO, NO, NO, NO, LT, LT, NO, NO, SH, SH, NO, NO, NO, NO, NO};
+    static const int lt_outer_soft[16] = {NO, HI, DK, NO, LT, HI, DK, NO, SH, HI, DK, NO, NO, HI, DK, NO};
+    uint32_t i = edge_flags & 0xF;
+    bool soft = (flags & 0x1000) != 0;  // BF_SOFT
+    int lto = soft ? lt_outer_soft[i] : lt_outer[i], lti = soft ? lt_inner_soft[i] : lt_inner[i];
+    int rbo = rb_outer[i], rbi = rb_inner[i];
+    auto color = [&](int idx) { return idx < 0 ? -1 : static_cast<int64_t>(g.sys_color(idx)); };
+    int64_t c_lto = color(lto), c_lti = color(lti), c_rbo = color(rbo), c_rbi = color(rbi);
     if (flags & 0x4000) {  // BF_MONO
-        light = hilight = shadow = dark = g.sys_color(6);
+        int64_t m = g.sys_color(6);
+        c_lto = c_rbo = m;
+        c_lti = c_rbi = -1;
     } else if (flags & 0x8000) {  // BF_FLAT
-        light = hilight = shadow = dark = g.sys_color(16);
+        int64_t f = g.sys_color(16);
+        c_lto = c_rbo = f;
+        c_lti = c_rbi = (c_lti < 0 ? -1 : g.sys_color(15));
     }
-    auto pass = [&](uint32_t tl, uint32_t brc) {
-        if (flags & 0x10) {  // BF_DIAGONAL: not drawn
-            return;
+    auto pass = [&](int64_t tl, int64_t brc) {
+        if (flags & 0x10) return;  // BF_DIAGONAL: not drawn
+        if (tl >= 0) {
+            if (flags & 0x2) fill_rect(g, hdc, {r.l, r.t, r.r, r.t + 1}, static_cast<uint32_t>(tl));  // BF_TOP
+            if (flags & 0x1) fill_rect(g, hdc, {r.l, r.t, r.l + 1, r.b}, static_cast<uint32_t>(tl));  // BF_LEFT
         }
-        if (flags & 0x2) fill_rect(g, hdc, {r.l, r.t, r.r, r.t + 1}, tl);        // BF_TOP
-        if (flags & 0x1) fill_rect(g, hdc, {r.l, r.t, r.l + 1, r.b}, tl);        // BF_LEFT
-        if (flags & 0x8) fill_rect(g, hdc, {r.l, r.b - 1, r.r, r.b}, brc);       // BF_BOTTOM
-        if (flags & 0x4) fill_rect(g, hdc, {r.r - 1, r.t, r.r, r.b}, brc);       // BF_RIGHT
-        if (flags & 0x1) r.l++;
-        if (flags & 0x2) r.t++;
-        if (flags & 0x4) r.r--;
-        if (flags & 0x8) r.b--;
+        if (brc >= 0) {
+            if (flags & 0x8) fill_rect(g, hdc, {r.l, r.b - 1, r.r, r.b}, static_cast<uint32_t>(brc));  // BF_BOTTOM
+            if (flags & 0x4) fill_rect(g, hdc, {r.r - 1, r.t, r.r, r.b}, static_cast<uint32_t>(brc));  // BF_RIGHT
+        }
+        if (tl >= 0 || brc >= 0) {
+            if (flags & 0x1) r.l++;
+            if (flags & 0x2) r.t++;
+            if (flags & 0x4) r.r--;
+            if (flags & 0x8) r.b--;
+        }
     };
-    uint32_t outer = edge_flags & 3, inner = (edge_flags >> 2) & 3;
-    if (outer == 1) pass(light, dark);
-    else if (outer == 2) pass(shadow, hilight);
-    if (inner == 1) pass(hilight, shadow);
-    else if (inner == 2) pass(dark, light);
+    pass(c_lto, c_rbo);
+    pass(c_lti, c_rbi);
     if ((flags & 0x800) && !r.empty()) fill_rect(g, hdc, r, g.sys_color(15));  // BF_MIDDLE
 }
 
@@ -254,15 +339,18 @@ void frame_control(Gui& g, uint32_t hdc, Rect r, uint32_t type, uint32_t state) 
             uint32_t kind = state & 0xF;
             bool pushed = (state & 0x200) != 0, checked = (state & 0x400) != 0,
                  inactive = (state & 0x100) != 0;
-            if (kind == 0x10 || (state & 0x10) || kind == 0) {  // DFCS_BUTTONPUSH 0x10
+            if (state & 0x10) {  // DFCS_BUTTONPUSH (DFCS_BUTTONCHECK is 0)
                 fill_rect(g, hdc, r, g.sys_color(15));
                 edge(g, hdc, r, pushed || checked ? 0xA : 0x5, 0xF);
                 return;
             }
             if (kind == 0 || kind == 3 || kind == 4) {  // check boxes
-                Rect b{r.l, r.t, r.l + std::min(r.w(), 13), r.t + std::min(r.h(), 13)};
+                // The classic box, as Windows still draws it for an unthemed
+                // button: a sunken edge round a white square, cut off by the
+                // control rather than shrunk when the control is shorter.
+                Rect b{r.l, r.t, r.l + 13, r.t + 13};
                 fill_rect(g, hdc, b, inactive || pushed ? g.sys_color(15) : g.sys_color(5));
-                frame_rect(g, hdc, b, g.sys_color(16));
+                edge(g, hdc, b, 0xA, 0xF);  // EDGE_SUNKEN, BF_RECT
                 if (checked) {
                     uint32_t c = inactive ? g.sys_color(17) : 0;
                     int cx = b.l + 6, cy = b.t + 6;

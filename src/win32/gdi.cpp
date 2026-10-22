@@ -1151,6 +1151,23 @@ uint32_t text_metrics_height(Gui& g, uint32_t font) { return static_cast<uint32_
 
 uint32_t default_gui_font(Gui& g) { return g.stock[17]; }
 
+Rect dc_clip_box(Gui& g, uint32_t hdc, int* complexity) {
+    DC* d = g.dc(hdc);
+    if (!d) return {};
+    Resolved r;
+    Region c;
+    if (resolve(g, d, r)) {
+        c = clip_region(g, d, r);
+        c.offset(-r.org.x, -r.org.y);
+    } else {
+        c.set_rect({0, 0, g.screen_w, g.screen_h});
+    }
+    if (complexity) *complexity = region_complexity(c);
+    Rect b = c.bounds();
+    Point a = dp_to_lp(d->s, b.l, b.t), z = dp_to_lp(d->s, b.r, b.b);
+    return {std::min(a.x, z.x), std::min(a.y, z.y), std::max(a.x, z.x), std::max(a.y, z.y)};
+}
+
 // Exposed for user32 (DrawText and friends live there but need the font).
 RealFont* dc_realfont(Gui& g, uint32_t hdc) {
     DC* d = g.dc(hdc);
@@ -1218,6 +1235,7 @@ void install_gdi(Emulator& e) {
     }
     g.stock[16] = mk_font(u"FixedSys", 16, 400);
     g.stock[17] = mk_font(u"MS UI Gothic", -12, 400);
+    g.ui_font = mk_font(u"Yu Gothic UI", -12, 400);
     g.stock[18] = mk_brush(0xFFFFFF, 0);  // DC_BRUSH
     g.stock[19] = mk_pen(0x000000, 0);    // DC_PEN
     for (int i = 0; i < 31; ++i) g.sys_color_brush[i] = mk_brush(g.sys_color(i), 0);
@@ -2016,18 +2034,9 @@ void install_gdi(Emulator& e) {
         Gui& g = gui(e);
         DC* d = g.dc(A(e, 0));
         if (!d) return ret(e, 0);
-        Resolved r;
-        Region c;
-        if (resolve(g, d, r)) {
-            c = clip_region(g, d, r);
-            c.offset(-r.org.x, -r.org.y);
-        } else {
-            c.set_rect({0, 0, g.screen_w, g.screen_h});
-        }
-        Rect b = c.bounds();
-        Point a = dp_to_lp(d->s, b.l, b.t), z = dp_to_lp(d->s, b.r, b.b);
-        write_rect(e, A(e, 1), {std::min(a.x, z.x), std::min(a.y, z.y), std::max(a.x, z.x), std::max(a.y, z.y)});
-        ret(e, static_cast<uint64_t>(region_complexity(c)));
+        int complexity = 0;
+        write_rect(e, A(e, 1), dc_clip_box(g, U(e, 0), &complexity));
+        ret(e, static_cast<uint64_t>(complexity));
     });
     api(e, "GetRandomRgn", 3, [](Emulator& e) {
         Gui& g = gui(e);

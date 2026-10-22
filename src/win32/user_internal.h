@@ -78,13 +78,29 @@ enum : uint32_t {
     SWP_STATECHANGED = 0x8000,
 };
 
-// Non-client metrics (Windows 10 at 96 DPI).
+// Non-client metrics (Windows 11 at 96 DPI).
 constexpr int kCaptionH = 23;
 constexpr int kSmCaptionH = 23;
 constexpr int kMenuH = 20;
 constexpr int kThickFrame = 8;   // SM_CXFRAME + SM_CXPADDEDBORDER
 constexpr int kDlgFrame = 3;
 constexpr int kScrollW = 17;
+constexpr int kDwmInvisible = 7;  // Windows 11's invisible resize border, outside the 1px visible one
+
+// The frame a style gets.  On Windows 11 every top-level window with a thick
+// or a dialog frame is framed by DWM: 7 invisible pixels for resizing and one
+// visible border, 8 in all, whether it can be resized or not.  A child keeps
+// the classic 3-pixel dialog frame.
+inline int frame_for_style(uint32_t style, uint32_t exstyle) {
+    if (style & WS_THICKFRAME) return kThickFrame;
+    if ((style & WS_DLGFRAME) || (exstyle & WS_EX_DLGMODALFRAME)) return (style & WS_CHILD) ? kDlgFrame : kThickFrame;
+    if (style & WS_BORDER) return 1;
+    return 0;
+}
+// Whether DWM draws the frame: invisible edges, a 1px border, rounded corners.
+inline bool dwm_frame(uint32_t style, uint32_t exstyle) {
+    return !(style & WS_CHILD) && frame_for_style(style, exstyle) == kThickFrame;
+}
 
 // The window procedure the host provides for a built-in class, and the
 // registration helper the control files call.
@@ -97,6 +113,8 @@ uint64_t def_dlg_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t
 bool is_dialog_message(Gui& g, uint32_t hdlg, const Msg& m);
 int nc_hittest(Gui& g, Window* w, Point screen);
 void nc_paint(Gui& g, Window* w, const Region* rgn);
+// The caption button under the mouse (or held down), for its hover colour.
+void nc_set_hot(Gui& g, uint32_t hwnd, int ht, bool pressed);
 void nc_calc(Gui& g, Window* w, Rect& client);  // window rect -> client rect, parent coords
 void draw_scrollbars(Gui& g, Window* w, uint32_t hdc);
 

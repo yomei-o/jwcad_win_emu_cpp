@@ -1,5 +1,6 @@
 // user32: windows, the message queue, input, painting, and composition.
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -220,9 +221,13 @@ Region Gui::visible_region(const Window* w, bool client) const {
         c = p;
     }
     if (w->style & WS_CLIPCHILDREN) {
+        // Only what a child can show: the part inside this window's client
+        // area.  A child poking out over the frame (MFC puts toolbars two
+        // pixels into their bar's border) must not stop the frame painting.
+        Rect cr = client_rect_screen(w);
         for (uint32_t ch : w->children) {
             const Window* k = win(ch);
-            if (k && (k->style & WS_VISIBLE)) out.subtract(to_surf(window_rect_screen(k)));
+            if (k && (k->style & WS_VISIBLE)) out.subtract(to_surf(window_rect_screen(k).intersect(cr)));
         }
     }
     return out;
@@ -290,12 +295,62 @@ void Gui::ensure_surface(Window* top) {
     top->surf_h = h;
 }
 
+// A top-level window the way Windows 11's DWM shows it: the outer 7 pixels
+// on the left, right and bottom are an invisible resize border, the corners
+// are rounded with a radius of 8, and the 1-pixel border is a translucent
+// grey over whatever lies behind.
+void Gui::compose_dwm(Window* t) {
+    const int inv = kDwmInvisible, R = 8;
+    int W = std::min(t->wrect.w(), t->surf_w), H = std::min(t->wrect.h(), t->surf_h);
+    int vb = H - inv;  // rows [0, vb) are visible
+    bool act = t->nc_active >= 0 ? t->nc_active != 0 : active == t->hwnd;
+    int alpha = act ? 92 : 60;  // of 256, toward mid grey
+    auto blend = [&](uint32_t bg) {
+        auto ch = [&](int s) {
+            uint32_t b = (bg >> s) & 0xFF;
+            return ((b * static_cast<uint32_t>(256 - alpha) + 0x80u * static_cast<uint32_t>(alpha)) >> 8) << s;
+        };
+        return ch(0) | ch(8) | ch(16);
+    };
+    // How far a rounded corner cuts into row `d` counted from the edge.
+    auto inset = [&](int d) {
+        if (d >= R) return 0;
+        double c = R - d - 0.5;
+        return static_cast<int>(std::lround(R - std::sqrt(R * R - c * c)));
+    };
+    for (int sy = 0; sy < vb; ++sy) {
+        int y = t->wrect.t + sy;
+        if (y < 0 || y >= screen_h) continue;
+        int from_edge = std::min(sy, vb - 1 - sy);
+        int ins = inset(from_edge);
+        int outer = from_edge > 0 ? inset(from_edge - 1) : W;  // the row nearer the edge
+        int vx0 = inv + ins, vx1 = W - inv - ins;
+        if (vx1 <= vx0) continue;
+        uint32_t* dst = screen.data() + static_cast<size_t>(y) * screen_w;
+        const uint32_t* src = t->surface->data() + static_cast<size_t>(sy) * t->surf_w;
+        bool edge_row = sy == 0 || sy == vb - 1;
+        // The border on this row: all of it on the top and bottom rows, else
+        // the run the corner steps over plus the outermost pixel.
+        int run = edge_row ? (vx1 - vx0) : std::max(1, std::min(outer, R) - ins);
+        for (int x = vx0; x < vx1; ++x) {
+            int sx = t->wrect.l + x;
+            if (sx < 0 || sx >= screen_w) continue;
+            bool border = edge_row || x < vx0 + run || x >= vx1 - run;
+            dst[sx] = border ? blend(dst[sx]) : src[x];
+        }
+    }
+}
+
 void Gui::compose(bool) {
     std::fill(screen.begin(), screen.end(), 0x3A6EA5);
     Window* d = win(desktop);
     for (auto it = d->children.rbegin(); it != d->children.rend(); ++it) {
         Window* t = win(*it);
         if (!t || !(t->style & WS_VISIBLE) || !t->surface) continue;
+        if (dwm_frame(t->style, t->exstyle) && !t->maximized) {
+            compose_dwm(t);
+            continue;
+        }
         Rect r = t->wrect.intersect({0, 0, screen_w, screen_h});
         for (int y = r.t; y < r.b; ++y) {
             int sy = y - t->wrect.t;
@@ -562,7 +617,10 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
         int ht = HTCLIENT;
         if (!target) {
             target = window_from_point(cursor_pos, false);
-            if (!target) return false;
+            if (!target) {
+                nc_set_hot(*this, 0, 0, false);
+                return false;
+            }
             // A disabled window gets nothing; the modal dialog it owns flashes.
             Window* w = win(target);
             while (w && (w->style & WS_DISABLED) && (w->style & WS_CHILD)) {
@@ -629,6 +687,7 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
             out.wparam = static_cast<uint32_t>(ht);
             out.lparam = make_lparam(ev.x, ev.y);
         }
+        if (ev.type == HostEvent::MouseMove && !capture) nc_set_hot(*this, target, ht, false);
         hover_hwnd = target;
         return true;
     }
@@ -641,6 +700,7 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
         if (vk == 0x10 || vk == 0xA0 || vk == 0xA1) key_state[0x10] = down ? 0x80 : 0;
         if (vk == 0x11 || vk == 0xA2 || vk == 0xA3) key_state[0x11] = down ? 0x80 : 0;
         if (vk == 0x12 || vk == 0xA4 || vk == 0xA5) key_state[0x12] = down ? 0x80 : 0;
+        if (down && (vk == 0x12 || vk == 0xA4 || vk == 0xA5 || vk == 0x79)) menu_keyboard = true;  // keyboard cues from now on
         bool alt = (key_state[0x12] & 0x80) != 0;
         uint32_t target = focus ? focus : active;
         if (!target) return false;
@@ -889,10 +949,7 @@ void Gui::dump_windows(std::FILE* f, uint32_t hwnd, int depth) const {
 Rect Gui::nc_insets(uint32_t style, uint32_t exstyle, bool menu, int width) const {
     (void)width;
     Rect r;
-    int b = 0;
-    if (style & WS_THICKFRAME) b = kThickFrame;
-    else if ((style & WS_DLGFRAME) || (exstyle & WS_EX_DLGMODALFRAME)) b = kDlgFrame;
-    else if (style & WS_BORDER) b = 1;
+    int b = frame_for_style(style, exstyle);
     if (exstyle & WS_EX_CLIENTEDGE) b += 2;
     if (exstyle & WS_EX_STATICEDGE) b += 1;
     r.l = r.r = r.b = b;

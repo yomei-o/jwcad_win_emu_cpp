@@ -345,6 +345,7 @@ struct Window {
     // Before maximising, so that SC_RESTORE can put it back.
     Rect normal_rect;
     bool maximized = false, minimized = false;
+    int nc_active = -1;  // the last WM_NCACTIVATE state (-1: none yet, follow the active window)
 
     bool destroying = false;
     bool created = false;  // WM_CREATE has returned
@@ -421,6 +422,7 @@ public:
     int screen_w = 1280, screen_h = 800;
     std::vector<uint32_t> screen;
     Rect screen_dirty;
+    void compose_dwm(Window* t);
     void compose(bool force = false);
     void present_now();
     uint64_t last_present = 0;
@@ -445,6 +447,13 @@ public:
     uint32_t focus = 0, active = 0, capture = 0, foreground = 0;
     int capture_ht = 0;  // capture from a non-client drag
     uint32_t hover_hwnd = 0;
+    // The caption button under the mouse (HTCLOSE / HTMAXBUTTON / HTMINBUTTON)
+    // and whether it is held down, for the Windows 11 hover and press colours.
+    uint32_t nc_hot_hwnd = 0;
+    int nc_hot_ht = 0;
+    bool nc_hot_pressed = false;
+    uint32_t ui_font = 0;  // Yu Gothic UI 9pt: captions and menus
+    bool menu_keyboard = false;  // Alt / F10 was used: show access-key underlines
 
     // Geometry helpers
     Window* toplevel_of(Window* w) const;
@@ -642,6 +651,8 @@ void frame_control(Gui& g, uint32_t hdc, Rect r, uint32_t type, uint32_t state);
 }  // namespace draw
 
 uint32_t default_gui_font(Gui& g);
+// GetClipBox: the bounds of what drawing on the DC can touch, logical units.
+Rect dc_clip_box(Gui& g, uint32_t hdc, int* complexity = nullptr);
 uint32_t text_metrics_height(Gui& g, uint32_t font);
 
 // Called after the registry file is rewritten, so a front end without a

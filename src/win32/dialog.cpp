@@ -1,6 +1,7 @@
 // Dialogs: templates, dialog units, DefDlgProc, keyboard navigation, modal
 // loops, and MessageBox.
 #include <algorithm>
+#include <map>
 #include <cstring>
 
 #include "font.h"
@@ -651,14 +652,38 @@ uint64_t def_dlg_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t
 
 namespace {
 
+// A message box's look on Windows 11: a white body with the icon and text,
+// and a grey band along the bottom holding the buttons.
+struct MsgBoxLook {
+    int footer_top = 0;
+    uint32_t icon = 0;
+};
+std::map<uint32_t, MsgBoxLook> g_msgbox_look;
+
 uint64_t msgbox_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t) {
-    if (msg == WM_COMMAND && (wp >> 16) == 0) {
-        Window* w = g.win(hwnd);
-        if (w) {
+    Window* w = g.win(hwnd);
+    if (!w) return 0;
+    switch (msg) {
+        case WM_COMMAND:
+            if ((wp >> 16) != 0) return 0;
             w->dlg_ended = true;
             w->dlg_result = static_cast<int64_t>(wp & 0xFFFF);
+            return 1;
+        case WM_ERASEBKGND: {
+            const MsgBoxLook& look = g_msgbox_look[hwnd];
+            uint32_t hdc = static_cast<uint32_t>(wp);
+            draw::fill_rect(g, hdc, {0, 0, w->crect.w(), look.footer_top}, 0xFFFFFF);
+            draw::fill_rect(g, hdc, {0, look.footer_top, w->crect.w(), w->crect.h()}, 0xF0F0F0);
+            if (look.icon) draw::draw_icon(g, hdc, 21, 23, look.icon, 32, 32);
+            set_extra(w, DWLP_MSGRESULT, 1);
+            return 1;
         }
-        return 1;
+        case WM_CTLCOLORSTATIC:
+            if (DC* d = g.dc(static_cast<uint32_t>(wp))) d->s.bk_color = 0xFFFFFF;
+            return g.stock[0];  // WHITE_BRUSH
+        case WM_DESTROY:
+            g_msgbox_look.erase(hwnd);
+            return 0;
     }
     return 0;
 }
@@ -686,19 +711,35 @@ int message_box(Gui& g, uint32_t owner, const std::u16string& text, const std::u
         case 6: btns = {{2, u"キャンセル"}, {10, u"再実行(&T)"}, {11, u"続行(&C)"}}; break;
         default: btns = {{1, u"OK"}}; break;
     }
-    // Measure the text with the message font.
-    uint32_t font = default_gui_font(g);
+    // MB_ICONHAND 0x10, MB_ICONQUESTION 0x20, MB_ICONEXCLAMATION 0x30,
+    // MB_ICONASTERISK 0x40: the system icons IDI_HAND .. IDI_ASTERISK.
+    uint32_t icon = 0;
+    if (uint32_t k = (type >> 4) & 0xF; k >= 1 && k <= 4) icon = system_icon(g, 32512 + static_cast<int>(k));
+    // Measured on Windows 11: icon at (21, 23), text 62 in (21 without an
+    // icon) and 30 short of the right edge, the grey band starting 21 below
+    // the taller of the two, 42 tall, with 75x23 buttons 9 apart, 9 from its
+    // top and 15 from the right.
+    uint32_t font = g.ui_font ? g.ui_font : default_gui_font(g);
     uint32_t hdc = g.create_dc(DC::Kind::Memory, 0, false);
     draw::select_font(g, hdc, font);
     Rect tr{0, 0, g.screen_w * 2 / 3, 0};
     draw_text_impl(g, hdc, text, tr, 0x400 | 0x10 | 0x800);  // CALCRECT|WORDBREAK|NOPREFIX
+    std::vector<int> bws;
+    for (const auto& b : btns) {
+        Rect br{0, 0, 0, 0};
+        draw_text_impl(g, hdc, b.label, br, 0x400 | 0x20);  // CALCRECT|SINGLELINE
+        bws.push_back(std::max(75, br.w() + 16));
+    }
     g.delete_dc(hdc);
-    int bw = 80, bh = 24, gap = 8, margin = 16;
-    int icon_w = (type & 0xF0) ? 40 : 0;
-    int btn_total = static_cast<int>(btns.size()) * bw + (static_cast<int>(btns.size()) - 1) * gap;
-    int cw = std::max(tr.w() + icon_w + 2 * margin, btn_total + 2 * margin);
-    cw = std::max(cw, 160);
-    int ch = std::max(tr.h(), icon_w ? 32 : 0) + 2 * margin + bh + 16;
+    int tx = icon ? 62 : 21, ty = 23;
+    int th = tr.h();
+    if (icon && th < 32) ty += (32 - th) / 2;
+    int body = std::max(ty + th, icon ? 23 + 32 : 0) + 21;
+    int btn_total = 0;
+    for (int bw : bws) btn_total += bw;
+    btn_total += 9 * (static_cast<int>(btns.size()) - 1);
+    int cw = std::max({tx + tr.w() + 30, btn_total + 30, 160});
+    int ch = body + 42;
     uint32_t style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | WS_CLIPSIBLINGS;
     Rect ins = g.nc_insets(style, WS_EX_DLGMODALFRAME, false, cw);
     int ww = cw + ins.l + ins.r, wh = ch + ins.t + ins.b;
@@ -714,18 +755,19 @@ int message_box(Gui& g, uint32_t owner, const std::u16string& text, const std::u
     Window* w = g.win(hwnd);
     w->is_dialog = true;
     if (w->extra.size() < 30) w->extra.resize(30, 0);
+    g_msgbox_look[hwnd] = {body, icon};
     set_extra(w, DWLP_DLGPROC, static_cast<uint32_t>(proc_hook));
     w->font = font;
-    uint32_t st = g.create_window(0, u"Static", 0, text, WS_CHILD | WS_VISIBLE | 0x80 /*SS_NOPREFIX*/, margin + icon_w, margin,
-                                  tr.w() + 4, tr.h(), hwnd, 0xFFFF, 0, 0, false);
+    uint32_t st = g.create_window(0, u"Static", 0, text, WS_CHILD | WS_VISIBLE | 0x80 /*SS_NOPREFIX*/, tx, ty,
+                                  tr.w() + 4, th, hwnd, 0xFFFF, 0, 0, false);
     if (st) g.send(st, WM_SETFONT, font, 0);
-    int bx = (cw - btn_total) / 2, by = ch - bh - 12;
+    int bx = cw - 15 - btn_total, by = body + 9;
     uint32_t def_btn = 0;
     int def_index = static_cast<int>((type >> 8) & 0xF);
     for (size_t i = 0; i < btns.size(); ++i) {
         bool def = static_cast<int>(i) == def_index;
-        uint32_t b = g.create_window(0, u"Button", 0, btns[i].label, WS_CHILD | WS_VISIBLE | WS_TABSTOP | (def ? 1u : 0u), bx, by, bw, bh,
-                                     hwnd, static_cast<uint64_t>(btns[i].id), 0, 0, false);
+        uint32_t b = g.create_window(0, u"Button", 0, btns[i].label, WS_CHILD | WS_VISIBLE | WS_TABSTOP | (def ? 1u : 0u), bx, by,
+                                     bws[i], 23, hwnd, static_cast<uint64_t>(btns[i].id), 0, 0, false);
         if (b) {
             g.send(b, WM_SETFONT, font, 0);
             if (def) {
@@ -733,7 +775,7 @@ int message_box(Gui& g, uint32_t owner, const std::u16string& text, const std::u
                 w->dlg_def_id = static_cast<uint32_t>(btns[i].id);
             }
         }
-        bx += bw + gap;
+        bx += bws[i] + 9;
     }
     g.show_window(hwnd, 1);
     if (def_btn) g.set_focus(def_btn);

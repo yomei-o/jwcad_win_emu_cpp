@@ -250,6 +250,23 @@ RealFont* realize_font(const LogFont& lf) {
         rf->ave_width = std::max(1, rf->height / 2);
         rf->max_width = rf->height;
     }
+    // The MS Japanese faces (ＭＳ ゴシック, ＭＳ Ｐゴシック, ＭＳ 明朝, MS UI
+    // Gothic...) have a cell exactly one em tall - usWinAscent 220 and
+    // usWinDescent 36 of 256 - so tmHeight is the point size in pixels and a
+    // positive lfHeight is the em as well.  The faces standing in for them
+    // have taller cells, and every dialog laid out in their dialog units came
+    // out a pixel or two too tall.
+    std::u16string lface = lower_ascii(lf.face);
+    if (f && (contains(lface, u"ＭＳ") || contains(lface, u"ｍｓ") || contains(lface, u"ms ")) &&
+        (contains(lface, u"ゴシック") || contains(lface, u"明朝") || contains(lface, u"gothic") || contains(lface, u"mincho"))) {
+        int em = h < 0 ? -h : h;
+        rf->scale = static_cast<float>(em) / static_cast<float>(f->units_per_em);
+        rf->height = em;
+        rf->ascent = static_cast<int>(std::lround(em * 220.0 / 256.0));
+        rf->descent = em - rf->ascent;
+        rf->internal_leading = 0;
+        if (rf->fallback) rf->fb_scale = static_cast<float>(em) / rf->fallback->units_per_em;
+    }
     if (lf.width > 0 && rf->ave_width > 0) {
         rf->xscale = static_cast<float>(lf.width) / static_cast<float>(rf->ave_width);
         rf->width_override = lf.width;
