@@ -1053,11 +1053,23 @@ bool fd_accept_one(Gui& g, uint32_t hwnd, std::u16string name) {
         return false;
     }
     bool exists = FileTable::stat_path(to_utf8(full), st) == 0;
-    if (fd.req->save && !fd.req->def_ext.empty()) {
+    if (fd.req->save) {
+        // A name typed without an extension gets the default one, or else that
+        // of the file type chosen ("*.jwf" -> ".jwf"), as the Vista-style save
+        // dialog does.  Jw_cad's 環境設定ファイル 書出し gives no default and
+        // ignores a name that does not end in .jwf.
+        std::u16string ext = fd.req->def_ext;
+        int ft = fd.req->filter_index;
+        if (ext.empty() && ft >= 0 && ft < static_cast<int>(fd.req->filters.size())) {
+            std::u16string pat = fd.req->filters[static_cast<size_t>(ft)].second;
+            pat = pat.substr(0, pat.find(u';'));
+            if (pat.size() > 2 && pat.compare(0, 2, u"*.") == 0 && pat.find_first_of(u"*?", 2) == std::u16string::npos)
+                ext = pat.substr(2);
+        }
         size_t sep = full.find_last_of(u'\\');
         size_t dot = full.find_last_of(u'.');
-        if (dot == std::u16string::npos || (sep != std::u16string::npos && dot < sep)) {
-            full += u"." + fd.req->def_ext;
+        if (!ext.empty() && (dot == std::u16string::npos || (sep != std::u16string::npos && dot < sep))) {
+            full += u"." + ext;
             exists = FileTable::stat_path(to_utf8(full), st) == 0;
         }
     }

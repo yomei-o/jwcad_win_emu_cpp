@@ -616,6 +616,7 @@ void install_shell_ole(Emulator& e) {
             req.multi = !save && (flags & 0x200) != 0;   // OFN_ALLOWMULTISELECT
             if (!x86emu::win32::file_dialog(gui(e), e.mem.read32(ofn + 4), req)) return ret(e, 0);
             p = req.result;
+            e.log_call("  -> \"%s\" (default extension \"%s\")", to_utf8(p).c_str(), to_utf8(req.def_ext).c_str());
             e.mem.write32(ofn + 24, static_cast<uint32_t>(req.filter_index + 1));
             if (req.multi && req.results.size() > 1) {
                 // Explorer style: the folder, then each name, NUL after each and one more at the end.
