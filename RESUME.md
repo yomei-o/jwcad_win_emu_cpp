@@ -90,6 +90,13 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
 9. **MoveFileW・ReplaceFileW・PathFileExistsW・PathIsDirectoryW** がパスを二重に変換していた
    （FileTable の関数は自分で host_path する）。ファイル名変更が失敗、ネイティブで PathFileExists が常に偽。
    INI・GetTempFileName・LoadImage の fopen は `FileTable::fopen_guest`（日本語パス）
+11. **回転文字**：Jw_cad は GM_ADVANCED + SetWorldTransform で描く。字形がエスケープメントでしか回らず
+    一字ずつ立っていた → 字形をワールド変換の線形部分でも変換（`gdi.cpp` text_out / draw_glyph_matrix）
+12. **モーダル中の入力**：メッセージボックスが持ち主を無効にしても、子（ツールバーのボタン）はクリックできた。
+    祖先が無効なら捨てる（`user.cpp`）
+13. TrackMouseEvent（WM_MOUSELEAVE）を実装（stub だった）
+14. DXF の読み込みで Jw_cad 側の仕様と思われるもの（本物で未確認）：SPLINE・模様 HATCH・3DFACE・DIMENSION の線が出ない、
+    TEXT の揃え（72/11）が効かない、LAYER/LTYPE 表の無い DXF は線がすべて点線になる
 10. ブラウザ版でも DXF・SFC 保存を確認（`web_test.mjs` に追加。SFC は common_lib.dll を仮想 C: から読む）
 
 ほかに確認したもの：ファイル操作（比較・名前変更・削除・属性変更・図面情報コピー。送信は MAPI が無いので
