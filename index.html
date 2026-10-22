@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jw_cad on jwemu</title>
+<script src="coi-sw.js"></script>
+<style>
+  :root { --bg: #3a6ea5; --fg: #ffffff; --panel: rgba(0, 0, 0, 0.55); }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+               font-family: "Yu Gothic UI", "Meiryo", sans-serif; }
+  #screen { position: fixed; inset: 0; width: 100vw; height: 100vh; image-rendering: pixelated;
+            outline: none; cursor: default; display: block; }
+  #ime { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0;
+         resize: none; overflow: hidden; }
+  #status { position: fixed; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 16px 24px;
+            background: var(--panel); border-radius: 8px; font-size: 15px; max-width: min(90vw, 720px);
+            white-space: pre-wrap; text-align: center; }
+  #status.hidden { display: none; }
+</style>
+</head>
+<body>
+<canvas id="screen" tabindex="0"></canvas>
+<textarea id="ime" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+<div id="status">読み込み中…</div>
+<script>
+'use strict';
+const statusEl = document.getElementById('status');
+const canvas = document.getElementById('screen');
+const ime = document.getElementById('ime');
+
+function say(text, keep) {
+  statusEl.textContent = text;
+  statusEl.classList.toggle('hidden', !text);
+  if (!keep && text) setTimeout(() => { if (statusEl.textContent === text) statusEl.classList.add('hidden'); }, 4000);
+}
+
+if (!window.crossOriginIsolated) {
+  say('このページは SharedArrayBuffer が必要です。\n自動で再読み込みします（数秒待っても進まなければ手動で再読み込みしてください）。', true);
+} else {
+  start();
+}
+
+function start() {
+  // The event ring the worker reads: [0] written, [1] read, then 8 ints per event.
+  const SLOTS = 8, BASE = 16, N = 4096;
+  const events = new Int32Array(new SharedArrayBuffer((BASE + SLOTS * N) * 4));
+  function push(type, x, y, button, key, mods, extra, size) {
+    const w = Atomics.load(events, 0), r = Atomics.load(events, 1);
+    if (w - r >= N) return;  // full: drop
+    const at = BASE + (w % N) * SLOTS;
+    events[at] = type; events[at + 1] = x | 0; events[at + 2] = y | 0; events[at + 3] = button | 0;
+    events[at + 4] = key | 0; events[at + 5] = mods | 0; events[at + 6] = extra | 0; events[at + 7] = size | 0;
+    Atomics.store(events, 0, w + 1);
+    Atomics.notify(events, 0);
+  }
+  const T = {MouseMove: 1, MouseDown: 2, MouseUp: 3, Wheel: 4, KeyDown: 5, KeyUp: 6, Char: 7, Resize: 8, Quit: 9};
+
+  const W = () => Math.max(640, window.innerWidth), H = () => Math.max(480, window.innerHeight);
+  canvas.width = W(); canvas.height = H();
+  const view = canvas.getContext('bitmaprenderer');
+  const worker = new Worker('worker.js');
+  let registry = null;
+  try { registry = localStorage.getItem('jwemu-registry'); } catch (e) {}
+  worker.postMessage({type: 'start', events: events.buffer, width: W(), height: H(), registry});
+  const cursors = {32512: 'default', 32513: 'text', 32514: 'wait', 32515: 'crosshair', 32642: 'nwse-resize',
+                   32643: 'nesw-resize', 32644: 'ew-resize', 32645: 'ns-resize', 32646: 'move', 32649: 'pointer',
+                   0: 'crosshair'};
+  worker.onerror = (e) => { say('worker error: ' + (e.message || e), true); console.log('worker error', e.message, e.filename, e.lineno); };
+  worker.onmessage = (e) => {
+    const m = e.data;
+    if (m.type === 'frame') {
+      if (canvas.width !== m.bitmap.width) canvas.width = m.bitmap.width;
+      if (canvas.height !== m.bitmap.height) canvas.height = m.bitmap.height;
+      view.transferFromImageBitmap(m.bitmap);
+      if (!statusEl.classList.contains('hidden') && /起動中/.test(statusEl.textContent)) say('');
+    } else if (m.type === 'status') {
+      if (m.text === 'running') say('起動中…（数秒かかります）');
+      else if (m.text === 'starting') {}
+      else say(m.text, true);
+    } else if (m.type === 'log') {
+      console.log(m.text);
+    } else if (m.type === 'cursor') {
+      canvas.style.cursor = cursors[m.id] || 'default';
+    } else if (m.type === 'clipboard') {
+      if (navigator.clipboard) navigator.clipboard.writeText(m.text).catch(() => {});
+    } else if (m.type === 'persist') {
+      try { localStorage.setItem('jwemu-registry', m.text); } catch (err) {}
+    }
+  };
+
+  const mods = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0);
+  const pos = (e) => {
+    const r = canvas.getBoundingClientRect();
+    return [Math.floor((e.clientX - r.left) * W() / r.width), Math.floor((e.clientY - r.top) * H() / r.height)];
+  };
+  const button = (b) => (b === 2 ? 1 : b === 1 ? 2 : 0);
+  canvas.addEventListener('pointermove', (e) => { const [x, y] = pos(e); push(T.MouseMove, x, y, 0, 0, mods(e)); });
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    const [x, y] = pos(e);
+    push(T.MouseMove, x, y, 0, 0, mods(e));
+    push(T.MouseDown, x, y, button(e.button), 0, mods(e));
+    ime.focus({preventScroll: true});
+    e.preventDefault();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    const [x, y] = pos(e);
+    push(T.MouseUp, x, y, button(e.button), 0, mods(e));
+    e.preventDefault();
+  });
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('wheel', (e) => {
+    const [x, y] = pos(e);
+    push(T.Wheel, x, y, 0, 0, mods(e), e.deltaY > 0 ? -120 : 120);
+    e.preventDefault();
+  }, {passive: false});
+
+  // Keys: event.code to Windows virtual-key codes.
+  const VK = {Backspace: 8, Tab: 9, Enter: 13, NumpadEnter: 13, ShiftLeft: 16, ShiftRight: 16, ControlLeft: 17,
+    ControlRight: 17, AltLeft: 18, AltRight: 18, Pause: 19, CapsLock: 20, Escape: 27, Space: 32, PageUp: 33,
+    PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Insert: 45,
+    Delete: 46, Semicolon: 186, Equal: 187, Comma: 188, Minus: 189, Period: 190, Slash: 191, Backquote: 192,
+    BracketLeft: 219, Backslash: 220, BracketRight: 221, Quote: 222, IntlRo: 226, IntlYen: 220,
+    NumpadMultiply: 106, NumpadAdd: 107, NumpadSubtract: 109, NumpadDecimal: 110, NumpadDivide: 111,
+    Convert: 28, NonConvert: 29, KanaMode: 21, Lang1: 21, Lang2: 25};
+  const vk = (e) => {
+    if (VK[e.code] !== undefined) return VK[e.code];
+    let m = /^Key([A-Z])$/.exec(e.code); if (m) return m[1].charCodeAt(0);
+    m = /^Digit(\d)$/.exec(e.code); if (m) return 48 + +m[1];
+    m = /^Numpad(\d)$/.exec(e.code); if (m) return 96 + +m[1];
+    m = /^F(\d+)$/.exec(e.code); if (m) return 111 + +m[1];
+    return 0;
+  };
+  // A key that types a character goes to the textarea as well, which sends
+  // the character (and handles Japanese input); everything else is stopped
+  // here so the browser does not act on it.
+  ime.addEventListener('keydown', (e) => {
+    if (e.isComposing || e.keyCode === 229) return;
+    const k = vk(e);
+    if (k) push(T.KeyDown, 0, 0, 0, k, mods(e));
+    const typing = e.key.length === 1 && !e.ctrlKey && !e.altKey;
+    if (!typing) e.preventDefault();
+  });
+  ime.addEventListener('keyup', (e) => {
+    const k = vk(e);
+    if (k) push(T.KeyUp, 0, 0, 0, k, mods(e));
+  });
+  const sendText = (s) => { for (const ch of s) push(T.Char, 0, 0, 0, 0, 0, ch.codePointAt(0)); };
+  ime.addEventListener('input', (e) => {
+    if (e.isComposing) return;
+    sendText(ime.value);
+    ime.value = '';
+  });
+  ime.addEventListener('compositionend', (e) => {
+    sendText(e.data || ime.value);
+    ime.value = '';
+  });
+  canvas.addEventListener('focus', () => ime.focus({preventScroll: true}));
+  ime.focus({preventScroll: true});
+
+  window.addEventListener('resize', () => push(T.Resize, 0, 0, 0, 0, 0, 0, (W() & 0xFFFF) | (H() << 16)));
+}
+</script>
+</body>
+</html>

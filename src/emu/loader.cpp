@@ -2,11 +2,14 @@
 #include <cstring>
 
 #include "loader.h"
+#include "files.h"
 
 namespace x86emu {
 
 std::vector<uint8_t> read_file(const std::string& path) {
-    std::FILE* fp = std::fopen(path.c_str(), "rb");
+    // Through the same translation every guest file access takes, so that a
+    // program named as "C:\dir\prog.exe" loads on a Unix host too.
+    std::FILE* fp = std::fopen(FileTable::host_path(path).c_str(), "rb");
     if (!fp) throw LoadError("cannot open " + path);
     std::fseek(fp, 0, SEEK_END);
     long size = std::ftell(fp);

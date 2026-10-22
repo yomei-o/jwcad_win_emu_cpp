@@ -20,6 +20,24 @@ x86 エミュレータで動かすためのリポジトリです。目標は WAS
 
 ![エミュレータ上の Jw_cad](docs/first_window.png)
 
+## ブラウザで動かす
+
+**<https://yomei-o.github.io/jwcad_win_emu_cpp/>**（Chrome / Edge / Firefox。初回は
+サービスワーカーを入れるために一度だけ自動で再読み込みします）
+
+エミュレータは Web Worker の中で動き、Jw_cad が入力を待つ間は `Atomics.wait` で
+止まります。そのため SharedArrayBuffer が要り、GitHub Pages では `coi-sw.js` が
+COOP/COEP ヘッダを付けています。画面は Worker が描いた ImageBitmap をページへ送っています。
+設定（レジストリ）はブラウザの localStorage に残ります。
+
+![ブラウザで線を引いたところ](docs/browser_line.png)
+
+```sh
+sh tools/build_wasm.sh            # -> jwemu.js / jwemu.wasm / jwemu.data（emsdk）
+node tools/test_wasm.mjs          # node でヘッドレスに起動して tmp/wasm.png
+node tools/web_test.mjs           # ヘッドレス Chrome で開いて線を引き tmp/web_*.png
+```
+
 ## ビルドと実行（ネイティブ）
 
 ```sh

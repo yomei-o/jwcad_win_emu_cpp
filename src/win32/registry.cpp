@@ -39,6 +39,12 @@ struct Registry {
     bool loaded = false;
 };
 
+}  // namespace
+
+std::function<void(const std::string&)> registry_saved_hook;
+
+namespace {
+
 Registry& reg() {
     static Registry r;
     return r;
@@ -157,6 +163,7 @@ void save() {
     }
     std::fclose(fp);
     r.dirty = false;
+    if (registry_saved_hook) registry_saved_hook(r.path);
 }
 
 void load() {

@@ -782,6 +782,14 @@ bool Gui::get_message(Msg& out, uint32_t hwnd, uint32_t min, uint32_t max, bool 
         }
         // Nothing to do: show the screen and wait for the outside world.
         present_now();
+        if (std::getenv("JWEMU_EXIT_AT_IDLE")) {
+            // Measuring startup: how long until the program first waits for input.
+            static uint64_t t0 = host->now_ms();
+            std::fprintf(stderr, "[jwemu] idle after %llu instructions\n",
+                         (unsigned long long)emu.cpu().instructions_executed);
+            (void)t0;
+            std::exit(0);
+        }
         registry_flush();
         int timeout = -1;
         if (next_due) timeout = static_cast<int>(next_due > now ? next_due - now : 0);

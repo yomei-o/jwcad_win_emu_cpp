@@ -13,6 +13,8 @@
 #include <io.h>
 #define x86emu_stat_struct struct _stat64
 #else
+#include <dirent.h>
+#include <strings.h>
 #include <unistd.h>
 #define x86emu_stat_struct struct stat
 #endif
@@ -130,11 +132,26 @@ std::string FileTable::host_path(const std::string& guest_path) {
     // A Linux guest needs absolute paths that start with '/', and the emulator
     // hands it "/C:/dir/file" spellings for host paths on a Windows host (see
     // /proc/self/exe).  Undo that on the way back to the host filesystem.
-    if (out.size() >= 3 && out[0] == '/' &&
-        ((out[1] >= 'A' && out[1] <= 'Z') || (out[1] >= 'a' && out[1] <= 'z')) && out[2] == ':')
-        out.erase(0, 1);
+    // (Only on a Windows host: on a Unix one "/C:/..." is where a Windows
+    // guest's drive really lives, below, and translating twice must not undo it.)
+    auto is_letter = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+#if defined(_WIN32)
+    const bool drive_root = out.size() >= 3 && out[0] == '/' && is_letter(out[1]) && out[2] == ':';
+    if (drive_root) out.erase(0, 1);
+#else
+    // On a Unix host (and in the browser) a Windows guest's drive letters are
+    // directories at the root: "C:/jww/x" lives at "/C:/jww/x", so it means
+    // the same thing whatever the working directory is.
+    const bool drive_root = out.size() >= 2 && is_letter(out[0]) && out[1] == ':';
+    if (drive_root) out.insert(out.begin(), '/');
+    const bool already_drive = out.size() >= 3 && out[0] == '/' && is_letter(out[1]) && out[2] == ':';
+#endif
     // Any other absolute Unix path lives inside the sysroot, when one is set.
-    else if (!g_sysroot.empty() && !out.empty() && out[0] == '/')
+#if defined(_WIN32)
+    if (!drive_root && !g_sysroot.empty() && !out.empty() && out[0] == '/')
+#else
+    if (!drive_root && !already_drive && !g_sysroot.empty() && !out.empty() && out[0] == '/')
+#endif
         out = g_sysroot + out;
     // A trailing separator is how a guest spells a directory, and how the NT
     // path form arrives, but stat() rejects it on Windows.  Drop it unless the
@@ -142,6 +159,44 @@ std::string FileTable::host_path(const std::string& guest_path) {
     while (out.size() > 1 && out.back() == '/' &&
            !(out.size() == 3 && out[1] == ':'))
         out.pop_back();
+#if !defined(_WIN32)
+    // A Windows guest's drive is case-insensitive, and the guest relies on it:
+    // the loader asks for "common_lib_ap202.dll" when the file is
+    // "common_lib_AP202.dll".  When the exact path is not there, match each
+    // component without regard to ASCII case.
+    if (out.size() >= 3 && out[0] == '/' && out[2] == ':') {
+        struct stat st;
+        if (stat(out.c_str(), &st) != 0) {
+            std::string fixed;
+            size_t pos = 1;
+            bool ok = true;
+            fixed = "";
+            while (pos <= out.size()) {
+                size_t next = out.find('/', pos);
+                if (next == std::string::npos) next = out.size();
+                std::string part = out.substr(pos, next - pos);
+                std::string dir = fixed.empty() ? "/" : fixed;
+                std::string candidate = fixed + "/" + part;
+                if (ok && stat(candidate.c_str(), &st) != 0) {
+                    ok = false;
+                    if (DIR* d = opendir(dir.c_str())) {
+                        while (dirent* ent = readdir(d)) {
+                            if (strcasecmp(ent->d_name, part.c_str()) == 0) {
+                                candidate = fixed + "/" + ent->d_name;
+                                ok = true;
+                                break;
+                            }
+                        }
+                        closedir(d);
+                    }
+                }
+                fixed = candidate;
+                pos = next + 1;
+            }
+            if (ok) out = fixed;
+        }
+    }
+#endif
     return out;
 }
 

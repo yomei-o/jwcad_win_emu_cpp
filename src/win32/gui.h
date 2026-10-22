@@ -635,4 +635,8 @@ void frame_control(Gui& g, uint32_t hdc, Rect r, uint32_t type, uint32_t state);
 uint32_t default_gui_font(Gui& g);
 uint32_t text_metrics_height(Gui& g, uint32_t font);
 
+// Called after the registry file is rewritten, so a front end without a
+// persistent filesystem (the browser) can keep a copy elsewhere.
+extern std::function<void(const std::string&)> registry_saved_hook;
+
 }  // namespace x86emu::win32

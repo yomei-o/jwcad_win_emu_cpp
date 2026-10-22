@@ -33,7 +33,18 @@ std::string current_directory() {
         return utf16_string_to_utf8(std::u16string(wbuf, wbuf + wcslen(wbuf)));
 #else
     char buf[4096];
-    if (getcwd(buf, sizeof buf)) return buf;
+    if (getcwd(buf, sizeof buf)) {
+        // A Windows guest on a Unix host keeps its drives as "/C:" directories
+        // (see FileTable::host_path); it sees them as "C:\..." again.
+        std::string s = buf;
+        if (s.size() >= 3 && s[0] == '/' && s[2] == ':') {
+            s.erase(0, 1);
+            for (char& c : s)
+                if (c == '/') c = '\\';
+            if (s.size() == 2) s += '\\';
+        }
+        return s;
+    }
 #endif
     return ".";
 }
