@@ -598,18 +598,22 @@ int text_width(RealFont* f, const std::u16string& s, int extra) {
     return w;
 }
 
-// Draws one glyph rotated by `angle` radians around the pen point.
-void draw_glyph_rotated(Target& t, const Glyph& gl, double px, double py, double ca, double sa,
-                        uint32_t rgb) {
+// Draws one glyph through a 2x2 matrix around the pen point: a point (gx, gy)
+// of the glyph (x right, y down) lands at (px + m[0]*gx + m[1]*gy,
+// py + m[2]*gx + m[3]*gy).  Rotation by escapement, and GM_ADVANCED's world
+// transform (Jw_cad's rotated text), both come here.
+void draw_glyph_matrix(Target& t, const Glyph& gl, double px, double py, const double m[4], uint32_t rgb) {
     if (gl.w <= 0 || gl.h <= 0) return;
-    // Bounding box of the rotated bitmap.
+    double det = m[0] * m[3] - m[1] * m[2];
+    if (std::fabs(det) < 1e-9) return;
+    double inv[4] = {m[3] / det, -m[1] / det, -m[2] / det, m[0] / det};
+    // Bounding box of the transformed bitmap.
     double xs[4], ys[4];
     double cx[4] = {double(gl.x0), double(gl.x0 + gl.w), double(gl.x0), double(gl.x0 + gl.w)};
     double cy[4] = {double(gl.y0), double(gl.y0), double(gl.y0 + gl.h), double(gl.y0 + gl.h)};
     for (int i = 0; i < 4; ++i) {
-        // y grows downwards on screen; a positive escapement turns counter-clockwise.
-        xs[i] = px + cx[i] * ca + cy[i] * sa;
-        ys[i] = py - cx[i] * sa + cy[i] * ca;
+        xs[i] = px + cx[i] * m[0] + cy[i] * m[1];
+        ys[i] = py + cx[i] * m[2] + cy[i] * m[3];
     }
     int x0 = static_cast<int>(std::floor(*std::min_element(xs, xs + 4)));
     int x1 = static_cast<int>(std::ceil(*std::max_element(xs, xs + 4)));
@@ -620,9 +624,8 @@ void draw_glyph_rotated(Target& t, const Glyph& gl, double px, double py, double
         for (int x = x0; x <= x1; ++x) {
             if (!t.visible(x, y)) continue;
             double dx = x + 0.5 - px, dy = y + 0.5 - py;
-            // inverse rotation
-            double gx = dx * ca - dy * sa;
-            double gy = dx * sa + dy * ca;
+            double gx = dx * inv[0] + dy * inv[1];
+            double gy = dx * inv[2] + dy * inv[3];
             int ix = static_cast<int>(std::floor(gx)) - gl.x0;
             int iy = static_cast<int>(std::floor(gy)) - gl.y0;
             if (ix < 0 || iy < 0 || ix >= gl.w || iy >= gl.h) continue;
@@ -672,7 +675,18 @@ bool text_out(Gui& g, DC* d, int x, int y, uint32_t options, const Rect* lrect,
         for (auto& a : adv) a = len_to_dp(d->s, a);
     double ang = f->escapement * 3.14159265358979 / 1800.0;
     double ca = std::cos(ang), sa = std::sin(ang);
-    bool rotated = f->escapement % 3600 != 0;
+    // Glyph frame -> device: the escapement's rotation (y grows downwards, a
+    // positive escapement turns counter-clockwise), then in GM_ADVANCED the
+    // world transform's linear part, which turns and scales the glyphs too.
+    double m[4] = {ca, sa, -sa, ca};
+    const XForm& w = d->s.world;
+    if (d->s.graphics_mode == 2 && d->s.map_mode == 1 &&
+        (w.m11 != 1 || w.m12 != 0 || w.m21 != 0 || w.m22 != 1)) {
+        double r[4] = {w.m11 * m[0] + w.m21 * m[2], w.m11 * m[1] + w.m21 * m[3],
+                       w.m12 * m[0] + w.m22 * m[2], w.m12 * m[1] + w.m22 * m[3]};
+        std::copy(r, r + 4, m);
+    }
+    bool rotated = m[0] != 1 || m[1] != 0 || m[2] != 0 || m[3] != 1;
 
     int align_h = d->s.text_align & 6;  // TA_LEFT 0, TA_RIGHT 2, TA_CENTER 6
     int align_v = d->s.text_align & 24; // TA_TOP 0, TA_BOTTOM 8, TA_BASELINE 24
@@ -682,8 +696,8 @@ bool text_out(Gui& g, DC* d, int x, int y, uint32_t options, const Rect* lrect,
     if (align_v == 0) shift_y = f->ascent;
     else if (align_v == 8) shift_y = -f->descent;
     // Baseline origin in buffer coordinates.
-    double bx = p.x + shift_x * ca + shift_y * sa;
-    double by = p.y - shift_x * sa + shift_y * ca;
+    double bx = p.x + shift_x * m[0] + shift_y * m[1];
+    double by = p.y + shift_x * m[2] + shift_y * m[3];
 
     Region saved_clip;
     bool clipped = false;
@@ -715,12 +729,12 @@ bool text_out(Gui& g, DC* d, int x, int y, uint32_t options, const Rect* lrect,
     double pen = 0;
     for (size_t i = 0; i < cps.size(); ++i) {
         const Glyph& gl = f->glyph(cps[i]);
-        double gx = bx + pen * ca, gy = by - pen * sa;
+        double gx = bx + pen * m[0], gy = by + pen * m[2];
         if (!rotated) {
             int ix = static_cast<int>(std::lround(gx)), iy = static_cast<int>(std::lround(gy));
             if (gl.w > 0) t.blend_mask(ix + gl.x0, iy + gl.y0, gl.w, gl.h, gl.alpha.data(), gl.w, col);
         } else {
-            draw_glyph_rotated(t, gl, gx, gy, ca, sa, col);
+            draw_glyph_matrix(t, gl, gx, gy, m, col);
         }
         pen += adv[i];
     }
