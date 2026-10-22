@@ -4,6 +4,8 @@
 #include <map>
 #include <cstring>
 
+#include "emulator.h"
+#include "files.h"
 #include "font.h"
 #include "hookutil.h"
 #include "user_internal.h"
@@ -880,6 +882,257 @@ bool print_dialog(Gui& g, uint32_t owner, bool setup, const std::vector<std::u16
     paper = choice.paper;
     landscape = choice.landscape;
     color = choice.color;
+    return true;
+}
+
+// ---------------------------------------------------------------------------
+// The common Open / Save dialog (GetOpenFileName / GetSaveFileName)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr uint32_t kFdPath = 100, kFdList = 101, kFdName = 102, kFdType = 103;
+constexpr uint32_t LB_ADDSTRING = 0x180, LB_RESETCONTENT = 0x184, LB_GETCURSEL = 0x188;
+constexpr uint32_t CB_RESETCONTENT = 0x14B;
+
+struct FileDlg {
+    FileDialogRequest* req = nullptr;
+    std::u16string dir;   // without the trailing backslash, except for a root ("C:\")
+    std::vector<std::pair<std::u16string, bool>> entries;  // what the list shows: name, is a folder
+    std::u16string result;
+};
+FileDlg* g_fd = nullptr;
+
+// Case-insensitive wildcard match of one pattern ("*.jp*g").
+bool glob(const std::u16string& pat, const std::u16string& name) {
+    size_t p = 0, n = 0, star = std::u16string::npos, back = 0;
+    auto up = [](char16_t c) { return c >= u'a' && c <= u'z' ? static_cast<char16_t>(c - 32) : c; };
+    while (n < name.size()) {
+        if (p < pat.size() && (pat[p] == u'?' || up(pat[p]) == up(name[n]))) {
+            ++p, ++n;
+        } else if (p < pat.size() && pat[p] == u'*') {
+            star = p++;
+            back = n;
+        } else if (star != std::u16string::npos) {
+            p = star + 1;
+            n = ++back;
+        } else {
+            return false;
+        }
+    }
+    while (p < pat.size() && pat[p] == u'*') ++p;
+    return p == pat.size();
+}
+
+// "*.jpeg;*.jpg" against a name.  "*.*" matches everything, dots or not.
+bool matches_filter(const std::u16string& patterns, const std::u16string& name) {
+    size_t at = 0;
+    while (at <= patterns.size()) {
+        size_t semi = patterns.find(u';', at);
+        std::u16string one = patterns.substr(at, semi == std::u16string::npos ? std::u16string::npos : semi - at);
+        while (!one.empty() && one.front() == u' ') one.erase(0, 1);
+        if (one == u"*.*" || one == u"*" || glob(one, name)) return true;
+        if (semi == std::u16string::npos) break;
+        at = semi + 1;
+    }
+    return false;
+}
+
+std::u16string join_path(const std::u16string& dir, const std::u16string& name) {
+    if (dir.empty() || dir.back() == u'\\') return dir + name;
+    return dir + u'\\' + name;
+}
+
+std::u16string parent_dir(const std::u16string& dir) {
+    size_t s = dir.find_last_of(u'\\');
+    if (s == std::u16string::npos) return dir;
+    if (s <= 2) return dir.substr(0, 3);  // "C:\"
+    return dir.substr(0, s);
+}
+
+std::u16string normalize_dir(std::u16string d) {
+    for (auto& c : d)
+        if (c == u'/') c = u'\\';
+    while (d.size() > 3 && d.back() == u'\\') d.pop_back();
+    if (d.size() == 2 && d[1] == u':') d += u'\\';
+    return d;
+}
+
+uint64_t guest_wstr(Gui& g, const std::u16string& s) {
+    uint64_t p = g.emu.heap_alloc((s.size() + 1) * 2);
+    for (size_t i = 0; i < s.size(); ++i) g.emu.mem.write16(p + i * 2, s[i]);
+    g.emu.mem.write16(p + s.size() * 2, 0);
+    return p;
+}
+
+void send_text(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, const std::u16string& s) {
+    uint64_t p = guest_wstr(g, s);
+    g.send(hwnd, msg, wp, p);
+    g.emu.heap_free(p);
+}
+
+std::u16string fd_text(Gui& g, uint32_t hwnd) {
+    uint64_t buf = g.emu.heap_alloc(1024 * 2);
+    g.send(hwnd, WM_GETTEXT, 1024, buf);
+    std::u16string s = read_wstr(g.emu, buf);
+    g.emu.heap_free(buf);
+    return s;
+}
+
+void fd_fill(Gui& g, uint32_t hwnd) {
+    FileDlg& fd = *g_fd;
+    send_text(g, find_item_by_id(g, hwnd, kFdPath), WM_SETTEXT, 0, fd.dir);
+    uint32_t list = find_item_by_id(g, hwnd, kFdList);
+    g.send(list, LB_RESETCONTENT, 0, 0);
+    fd.entries.clear();
+    if (fd.dir.size() > 3) fd.entries.push_back({u"..", true});
+    std::u16string patterns = u"*.*";
+    int ft = fd.req->filter_index;
+    if (ft >= 0 && ft < static_cast<int>(fd.req->filters.size())) patterns = fd.req->filters[static_cast<size_t>(ft)].second;
+    std::vector<std::pair<std::u16string, bool>> files;
+    for (const auto& de : g.emu.list_directory(to_utf8(join_path(fd.dir, u"*")))) {
+        std::u16string n = from_utf8(de.name);
+        if (n == u"." || n == u"..") continue;
+        if (de.is_dir) fd.entries.push_back({n, true});
+        else if (matches_filter(patterns, n)) files.push_back({n, false});
+    }
+    fd.entries.insert(fd.entries.end(), files.begin(), files.end());
+    for (const auto& [n, is_dir] : fd.entries) send_text(g, list, LB_ADDSTRING, 0, is_dir ? u"[" + n + u"]" : n);
+}
+
+// OK, or a double click on a file: what the name box says, resolved.
+bool fd_accept(Gui& g, uint32_t hwnd) {
+    FileDlg& fd = *g_fd;
+    std::u16string name = fd_text(g, find_item_by_id(g, hwnd, kFdName));
+    while (!name.empty() && name.back() == u' ') name.pop_back();
+    if (name.empty()) return false;
+    std::u16string full = (name.size() > 1 && (name[1] == u':' || name[0] == u'\\')) ? name : join_path(fd.dir, name);
+    // A folder: go into it.
+    FileTable::Stat st;
+    if (name == u".." || (FileTable::stat_path(to_utf8(full), st) == 0 && st.is_dir)) {
+        fd.dir = name == u".." ? parent_dir(fd.dir) : normalize_dir(full);
+        send_text(g, find_item_by_id(g, hwnd, kFdName), WM_SETTEXT, 0, u"");
+        fd_fill(g, hwnd);
+        return false;
+    }
+    bool exists = FileTable::stat_path(to_utf8(full), st) == 0;
+    if (fd.req->save && !fd.req->def_ext.empty()) {
+        size_t sep = full.find_last_of(u'\\');
+        size_t dot = full.find_last_of(u'.');
+        if (dot == std::u16string::npos || (sep != std::u16string::npos && dot < sep)) {
+            full += u"." + fd.req->def_ext;
+            exists = FileTable::stat_path(to_utf8(full), st) == 0;
+        }
+    }
+    std::u16string shown = full.substr(full.find_last_of(u'\\') + 1);
+    if (!fd.req->save && fd.req->must_exist && !exists) {
+        message_box(g, hwnd, shown + u"\nファイルが見つかりません。\nファイル名を確認してください。", fd.req->title, 0x30);
+        return false;
+    }
+    if (fd.req->save && fd.req->overwrite_prompt && exists &&
+        message_box(g, hwnd, shown + u" は既に存在します。\n上書きしますか?", fd.req->title, 0x34) != 6 /*IDYES*/)
+        return false;
+    fd.result = full;
+    return true;
+}
+
+uint64_t file_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t) {
+    if (msg != WM_COMMAND || !g_fd) return 0;
+    uint32_t id = static_cast<uint32_t>(wp & 0xFFFF), code = static_cast<uint32_t>(wp >> 16);
+    Window* w = g.win(hwnd);
+    if (!w) return 0;
+    FileDlg& fd = *g_fd;
+    if (id == kFdList && (code == 1 /*LBN_SELCHANGE*/ || code == 2 /*LBN_DBLCLK*/)) {
+        int i = static_cast<int>(g.send(find_item_by_id(g, hwnd, kFdList), LB_GETCURSEL, 0, 0));
+        if (i < 0 || i >= static_cast<int>(fd.entries.size())) return 1;
+        auto [name, is_dir] = fd.entries[static_cast<size_t>(i)];
+        if (!is_dir) send_text(g, find_item_by_id(g, hwnd, kFdName), WM_SETTEXT, 0, name);
+        if (code == 2) {
+            if (is_dir) {
+                fd.dir = name == u".." ? parent_dir(fd.dir) : join_path(fd.dir, name);
+                fd_fill(g, hwnd);
+            } else if (fd_accept(g, hwnd)) {
+                w->dlg_ended = true;
+                w->dlg_result = IDOK;
+            }
+        }
+        return 1;
+    }
+    if (id == kFdType && code == 1 /*CBN_SELCHANGE*/) {
+        fd.req->filter_index = static_cast<int>(g.send(find_item_by_id(g, hwnd, kFdType), CB_GETCURSEL, 0, 0));
+        fd_fill(g, hwnd);
+        return 1;
+    }
+    if (code != 0 || (id != IDOK && id != IDCANCEL)) return 0;
+    if (id == IDOK && !fd_accept(g, hwnd)) return 1;
+    w->dlg_ended = true;
+    w->dlg_result = id;
+    return 1;
+}
+
+}  // namespace
+
+bool file_dialog(Gui& g, uint32_t owner, FileDialogRequest& req) {
+    static uint64_t proc_hook = 0;
+    if (!proc_hook) {
+        proc_hook = g.emu.add_hook("__file_dlgproc", g.emu.is64() ? 0 : 16, [](Emulator& e) {
+            ret(e, file_proc(gui(e), U(e, 0), U(e, 1), A(e, 2), A(e, 3)));
+        });
+    }
+    uint32_t font = default_gui_font(g);
+    const int cw = 480, ch = 350;
+    uint32_t style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | WS_CLIPSIBLINGS;
+    Rect ins = g.nc_insets(style, WS_EX_DLGMODALFRAME, false, cw);
+    int ww = cw + ins.l + ins.r, wh = ch + ins.t + ins.b;
+    uint32_t top_owner = owner;
+    if (Window* ow = g.win(owner)) {
+        Window* t = g.toplevel_of(ow);
+        top_owner = t ? t->hwnd : 0;
+    }
+    std::u16string title = !req.title.empty() ? req.title : req.save ? u"名前を付けて保存" : u"開く";
+    req.title = title;
+    uint32_t hwnd = g.create_window(WS_EX_DLGMODALFRAME | 0x8, u"#32770", 32770, title, style, (g.screen_w - ww) / 2,
+                                    (g.screen_h - wh) / 2, ww, wh, top_owner, 0, 0, 0, false);
+    if (!hwnd) return false;
+    Window* w = g.win(hwnd);
+    w->is_dialog = true;
+    if (w->extra.size() < 30) w->extra.resize(30, 0);
+    set_extra(w, DWLP_DLGPROC, static_cast<uint32_t>(proc_hook));
+    w->font = font;
+    auto child = [&](const char16_t* cls, const std::u16string& text, uint32_t st, uint32_t ex, int x, int y, int cx, int cy,
+                     uint32_t id) {
+        uint32_t c = g.create_window(ex, cls, 0, text, WS_CHILD | WS_VISIBLE | st, x, y, cx, cy, hwnd, id, 0, 0, false);
+        if (c) g.send(c, WM_SETFONT, font, 0);
+        return c;
+    };
+    child(u"Static", u"場所:", 0, 0, 12, 14, 50, 18, 0xFFFF);
+    child(u"Static", u"", 0x80 /*SS_NOPREFIX*/, 0, 64, 14, cw - 76, 18, kFdPath);
+    child(u"ListBox", u"", 0x1 /*LBS_NOTIFY*/ | 0x100 /*LBS_NOINTEGRALHEIGHT*/ | WS_VSCROLL | WS_TABSTOP, 0x200, 12, 38,
+          cw - 24, 214, kFdList);
+    child(u"Static", u"ファイル名:", 0, 0, 12, 268, 96, 18, 0xFFFF);
+    uint32_t name = child(u"Edit", req.name, 0x80 /*ES_AUTOHSCROLL*/ | WS_TABSTOP, 0x200, 110, 264, cw - 122, 22, kFdName);
+    child(u"Static", u"ファイルの種類:", 0, 0, 12, 298, 96, 18, 0xFFFF);
+    uint32_t type = child(u"ComboBox", u"", 3 /*CBS_DROPDOWNLIST*/ | WS_VSCROLL | WS_TABSTOP, 0, 110, 294, cw - 122, 200,
+                          kFdType);
+    g.send(type, CB_RESETCONTENT, 0, 0);
+    for (const auto& f : req.filters) send_text(g, type, CB_ADDSTRING, 0, f.first);
+    if (req.filter_index < 0 || req.filter_index >= static_cast<int>(req.filters.size())) req.filter_index = 0;
+    g.send(type, CB_SETCURSEL, static_cast<uint64_t>(req.filter_index), 0);
+    child(u"Button", req.save ? u"保存" : u"開く", 1 /*BS_DEFPUSHBUTTON*/ | WS_TABSTOP, 0, cw - 188, ch - 32, 84, 24, IDOK);
+    child(u"Button", u"キャンセル", WS_TABSTOP, 0, cw - 96, ch - 32, 84, 24, IDCANCEL);
+    w->dlg_def_id = IDOK;
+    FileDlg fd;
+    fd.req = &req;
+    fd.dir = normalize_dir(req.dir.empty() ? u"C:\\" : req.dir);
+    FileDlg* outer = g_fd;
+    g_fd = &fd;
+    fd_fill(g, hwnd);
+    g.show_window(hwnd, 1);
+    g.set_focus(name);
+    int64_t r = run_dialog_modal(g, hwnd, top_owner);
+    g_fd = outer;
+    if (r != IDOK || fd.result.empty()) return false;
+    req.result = fd.result;
     return true;
 }
 

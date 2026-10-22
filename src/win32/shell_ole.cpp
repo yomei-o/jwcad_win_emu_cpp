@@ -566,16 +566,63 @@ void install_shell_ole(Emulator& e) {
         write_wstr(e, A(e, 1), t, I(e, 2));
         ret(e, 0);
     });
-    // The file dialogs: the front end may supply a path through JWEMU_OPEN; the
-    // browser build replaces this with its own picker later.
+    // The file dialogs (dialog.cpp's file_dialog), over OPENFILENAMEW:
+    //   12 lpstrFilter, 24 nFilterIndex, 28 lpstrFile, 32 nMaxFile, 36 lpstrFileTitle,
+    //   40 nMaxFileTitle, 44 lpstrInitialDir, 48 lpstrTitle, 52 Flags,
+    //   56 nFileOffset, 58 nFileExtension, 60 lpstrDefExt
+    // JWEMU_OPEN / JWEMU_SAVE answer without showing it, for scripted runs.
+    // OFN_ENABLEHOOK's hook is not called: MFC's CFileDialog, the one user,
+    // reads the result from the structure when it has no window.
     auto file_dialog = [](Emulator& e, bool save) {
         uint64_t ofn = A(e, 0);
         uint64_t file = e.mem.read32(ofn + 28);
         uint32_t cap = e.mem.read32(ofn + 32);
-        const char* env = std::getenv(save ? "JWEMU_SAVE" : "JWEMU_OPEN");
-        if (!env || !*env || !file || !cap) return ret(e, 0);
-        std::u16string p = from_utf8(env);
+        if (!file || !cap) return ret(e, 0);
+        uint32_t flags = e.mem.read32(ofn + 52);
+        std::u16string p;
+        if (const char* env = std::getenv(save ? "JWEMU_SAVE" : "JWEMU_OPEN"); env && *env) {
+            p = from_utf8(env);
+        } else {
+            FileDialogRequest req;
+            req.save = save;
+            if (uint64_t t = e.mem.read32(ofn + 48)) req.title = read_wstr(e, t);
+            for (uint64_t f = e.mem.read32(ofn + 12); f;) {
+                std::u16string desc = read_wstr(e, f);
+                if (desc.empty()) break;
+                f += (desc.size() + 1) * 2;
+                std::u16string pat = read_wstr(e, f);
+                f += (pat.size() + 1) * 2;
+                req.filters.push_back({desc, pat});
+            }
+            if (req.filters.empty()) req.filters.push_back({u"すべてのファイル (*.*)", u"*.*"});
+            req.filter_index = std::max(0, static_cast<int>(e.mem.read32(ofn + 24)) - 1);
+            std::u16string initial = read_wstr(e, file);
+            size_t sep = initial.find_last_of(u"\\/");
+            if (sep != std::u16string::npos) {
+                req.dir = initial.substr(0, sep);
+                initial = initial.substr(sep + 1);
+            }
+            req.name = initial.find_first_of(u"*?") == std::u16string::npos ? initial : u"";
+            if (uint64_t d = e.mem.read32(ofn + 44)) req.dir = read_wstr(e, d);
+            if (req.dir.empty()) {
+                uint64_t buf = e.heap_alloc(520), get = e.existing_hook("GetCurrentDirectoryW");
+                if (get && e.call_guest(get, {260, buf})) req.dir = read_wstr(e, buf);
+                e.heap_free(buf);
+            }
+            if (uint64_t d = e.mem.read32(ofn + 60)) req.def_ext = read_wstr(e, d);
+            req.must_exist = (flags & 0x1000) != 0;      // OFN_FILEMUSTEXIST
+            req.overwrite_prompt = (flags & 0x2) != 0;   // OFN_OVERWRITEPROMPT
+            if (!x86emu::win32::file_dialog(gui(e), e.mem.read32(ofn + 4), req)) return ret(e, 0);
+            p = req.result;
+            e.mem.write32(ofn + 24, static_cast<uint32_t>(req.filter_index + 1));
+        }
+        if (p.size() + 1 > cap) {
+            e.mem.write16(file, static_cast<uint16_t>(p.size() + 1));  // what a big enough buffer would be
+            return ret(e, 0);
+        }
         write_wstr(e, file, p, static_cast<int>(cap));
+        if (uint64_t t = e.mem.read32(ofn + 36))
+            write_wstr(e, t, p.substr(p.find_last_of(u"\\/") + 1), static_cast<int>(e.mem.read32(ofn + 40)));
         size_t sep = p.find_last_of(u"\\/");
         e.mem.write16(ofn + 56, static_cast<uint16_t>(sep == std::u16string::npos ? 0 : sep + 1));  // nFileOffset
         size_t dot = p.find_last_of(u'.');

@@ -675,4 +675,19 @@ extern std::function<void(const std::string&)> print_done_hook;
 bool print_dialog(Gui& g, uint32_t owner, bool setup, const std::vector<std::u16string>& papers,
                   int& paper, bool& landscape, bool& color);
 
+// The common Open / Save dialog (dialog.cpp), for GetOpenFileName and
+// GetSaveFileName.  Returns false on cancel; on OK, `result` is the full path.
+struct FileDialogRequest {
+    bool save = false;
+    std::u16string title;
+    std::vector<std::pair<std::u16string, std::u16string>> filters;  // description, "*.a;*.b"
+    int filter_index = 0;      // into filters; updated to the one chosen
+    std::u16string dir;        // where it opens
+    std::u16string name;       // the name box to begin with
+    std::u16string def_ext;    // added to a saved name without an extension
+    bool must_exist = false, overwrite_prompt = false;
+    std::u16string result;
+};
+bool file_dialog(Gui& g, uint32_t owner, FileDialogRequest& req);
+
 }  // namespace x86emu::win32
