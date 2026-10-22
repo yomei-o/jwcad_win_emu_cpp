@@ -210,6 +210,8 @@ public:
     // sees the same drive as in the browser).  Empty: no mapping.
     static void set_drive_c(std::string dir);
     static const std::string& drive_c();
+    // Creates a directory (one level) given by a guest path, if it is missing.
+    static void ensure_directory(const std::string& guest_path);
 
     // Every open descriptor, for a caller that has to write the table down and
     // build it again later.  A host stream cannot cross to another host, but

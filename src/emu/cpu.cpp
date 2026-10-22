@@ -1114,6 +1114,8 @@ void Cpu::step() {
             history_pos_ = (history_pos_ + 1) % history_.size();
             if (history_filled_ < history_.size()) ++history_filled_;
         }
+        for (uint64_t b : breaks_)
+            if (b == start) on_break(start);
     }
     pfx_ = Prefixes{};
     // The code cursor belongs to one instruction.  Everything that changes rip

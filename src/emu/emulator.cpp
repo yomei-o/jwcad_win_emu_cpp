@@ -269,7 +269,23 @@ bool Emulator::dispatch_hook(uint64_t addr) {
     size_t idx = static_cast<size_t>((addr - hook_base_) / kHookStride);
     Hook& h = hooks_[idx];
     if (opt_.trace_calls && idx != 0)
-        std::fprintf(stderr, "[hook] %s\n", h.name.c_str());
+        // With the caller's return address, to find the guest code behind a call.
+        std::fprintf(stderr, "[hook] %s <- 0x%llX\n", h.name.c_str(),
+                     (unsigned long long)mem.read_sized(cpu_->regs[RSP], pointer_size()));
+    // JWEMU_STACK=<hook name>: the frame-pointer chain of each call to it.
+    static const char* stack_of = std::getenv("JWEMU_STACK");
+    if (stack_of && h.name == stack_of && !is64()) {
+        std::fprintf(stderr, "[stack] %s:", h.name.c_str());
+        uint64_t bp = cpu_->regs[RBP];
+        for (int i = 0; i < 24 && bp > 0x10000; ++i) {
+            uint64_t ret = mem.read32(bp + 4);
+            std::fprintf(stderr, " 0x%llX", (unsigned long long)ret);
+            uint64_t next = mem.read32(bp);
+            if (next <= bp) break;
+            bp = next;
+        }
+        std::fprintf(stderr, "\n");
+    }
 
     h.fn(*this);
     if (cpu_->halted) return true;
@@ -634,6 +650,13 @@ void Emulator::seed_environment() {
         env_.emplace_back(entry.substr(0, eq), entry.substr(eq + 1));
     }
 #endif
+    // With C: mapped to a folder, the host's %TEMP% (C:\Users\...\Temp) names
+    // a directory the guest cannot see.  Jw_cad's SXF writer puts its work file
+    // there and gave up with "0 :" when it could not create it.
+    if (!FileTable::drive_c().empty()) {
+        for (auto& [k, v] : env_)
+            if (k == "TEMP" || k == "TMP") v = "C:\\Temp";
+    }
 }
 
 const std::string* Emulator::getenv(const std::string& name) const {

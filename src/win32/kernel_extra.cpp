@@ -304,6 +304,13 @@ void install_kernel_extra(Emulator& e) {
         if (len < 0) w.push_back(0);
         if (cap == 0 || !dst) return ret(e, w.size());
         if (static_cast<int>(w.size()) > cap) {
+            // Windows fills the buffer before it reports the overflow, and ATL
+            // counts on that: CString(const char*) converts with a source
+            // length of -1 into a buffer one short of the terminator, ignores
+            // the failure and keeps the characters.  Writing nothing made every
+            // narrow literal an empty CString in Jw_cad - "" compared equal to
+            // ".jww", so saved files lost their extension.
+            for (int i = 0; i < cap; ++i) e.mem.write16(dst + static_cast<uint64_t>(i) * 2, w[static_cast<size_t>(i)]);
             e.set_last_error(122);  // ERROR_INSUFFICIENT_BUFFER
             return ret(e, 0);
         }
@@ -339,6 +346,16 @@ void install_kernel_extra(Emulator& e) {
         if (len < 0) out.push_back('\0');
         if (cap == 0 || !dst) return ret(e, out.size());
         if (static_cast<int>(out.size()) > cap) {
+            // As above: the buffer is filled first, with whole characters only.
+            size_t n = 0;
+            while (n < out.size()) {
+                unsigned char c = static_cast<unsigned char>(out[n]);
+                size_t step = cp_is_932(cp) && ((c >= 0x81 && c <= 0x9F) || (c >= 0xE0 && c <= 0xFC)) ? 2
+                              : cp == 65001 && c >= 0xC0 ? (c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : 2) : 1;
+                if (n + step > static_cast<size_t>(cap)) break;
+                n += step;
+            }
+            e.mem.write(dst, out.data(), n);
             e.set_last_error(122);
             return ret(e, 0);
         }

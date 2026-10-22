@@ -633,6 +633,7 @@ void Emulator::install_win32_extra_hooks() {
             dir = *v;
         else if (const std::string* v2 = e.getenv("TEMP"))
             dir = *v2;
+        FileTable::ensure_directory(dir);  // as GetTempPathW
         if (dir.empty() || (dir.back() != '\\' && dir.back() != '/')) dir += '\\';
         uint64_t buf = e.arg_slot(1), size = e.arg_slot(0);
         if (!buf || dir.size() + 1 > size) {

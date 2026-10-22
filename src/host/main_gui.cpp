@@ -430,6 +430,56 @@ std::string exe_dir(const char* argv0) {
     return p == std::string::npos ? "." : s.substr(0, p);
 }
 
+// JWEMU_BREAK=addr,addr,...: when guest code reaches one of these addresses,
+// print the registers and, for each register that points at a pointer to a
+// wide string (an MFC CString), that string.  For finding which branch a piece
+// of Jw_cad takes without a debugger.
+void install_breaks(Emulator& emu) {
+    const char* spec = std::getenv("JWEMU_BREAK");
+    if (!spec) return;
+    auto show = [&emu](uint64_t at) {
+        auto& r = emu.cpu().regs;
+        static const char* names[] = {"eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"};
+        std::fprintf(stderr, "[break] 0x%llX", (unsigned long long)at);
+        for (int i = 0; i < 8; ++i) std::fprintf(stderr, " %s=%llX", names[i], (unsigned long long)(r[i] & 0xFFFFFFFF));
+        std::fprintf(stderr, "\n");
+        auto wstr = [&emu](uint64_t p) {
+            std::string s;
+            for (int k = 0; k < 80 && emu.mem.is_mapped(p + 2 * k); ++k) {
+                uint16_t c = emu.mem.read16(p + 2 * k);
+                if (!c) return s;
+                if (c < 0x20 || c > 0x7E) {
+                    char b[8];
+                    std::snprintf(b, sizeof b, "\\u%04X", c);
+                    s += b;
+                } else {
+                    s += static_cast<char>(c);
+                }
+            }
+            return s;
+        };
+        for (int i : {0, 1, 2, 6, 7}) {
+            uint64_t p = r[i] & 0xFFFFFFFF;
+            if (!emu.mem.is_mapped(p)) continue;
+            uint64_t q = emu.mem.read32(p);
+            if (q && emu.mem.is_mapped(q)) std::fprintf(stderr, "    [%s] -> \"%s\"\n", names[i], wstr(q).c_str());
+        }
+        // The first stack arguments, as wide strings.
+        for (int k = 0; k < 2; ++k) {
+            uint64_t p = emu.mem.read32((r[4] & 0xFFFFFFFF) + 4 * k);
+            if (p && emu.mem.is_mapped(p)) std::fprintf(stderr, "    [esp+%d] \"%s\"\n", 4 * k, wstr(p).c_str());
+        }
+    };
+    std::string s = spec;
+    size_t pos = 0;
+    while (pos < s.size()) {
+        size_t comma = s.find(',', pos);
+        if (comma == std::string::npos) comma = s.size();
+        emu.cpu().add_break(std::strtoull(s.substr(pos, comma - pos).c_str(), nullptr, 16), show);
+        pos = comma + 1;
+    }
+}
+
 bool dir_exists(const std::string& d) {
     FILE* fp = std::fopen((d + "/jwsubgothic.ttf").c_str(), "rb");
     if (fp) std::fclose(fp);
@@ -552,6 +602,7 @@ int main(int argc, char** argv) {
             try {
                 emu.load(args[0], args);
                 if (history) emu.cpu().enable_history(history);
+                install_breaks(emu);
                 code = emu.run();
             } catch (const std::exception& err) {
                 std::fprintf(stderr, "jwemu: %s\n", err.what());
@@ -571,6 +622,7 @@ int main(int argc, char** argv) {
     if (opt.imports_only) {
         emu.load(args[0], args);
         if (history) emu.cpu().enable_history(history);
+        install_breaks(emu);
         for (const auto& dll : preload) emu.load_library_for_guest(dll);
         for (const auto& name : emu.unimplemented_imports()) std::printf("%s\n", name.c_str());
         return 0;
@@ -588,6 +640,7 @@ int main(int argc, char** argv) {
     try {
         emu.load(args[0], args);
         if (history) emu.cpu().enable_history(history);
+        install_breaks(emu);
         int code = emu.run();
         hh.finish();
         return code;

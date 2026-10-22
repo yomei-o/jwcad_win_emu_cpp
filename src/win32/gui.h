@@ -468,7 +468,7 @@ public:
     Point surface_origin(const Window* w, bool client) const;
     // The pixels a DC on this window may touch, in surface coordinates.
     Region visible_region(const Window* w, bool client) const;
-    uint32_t window_from_point(Point screen_pt, bool skip_disabled = false);
+    uint32_t window_from_point(Point screen_pt, bool skip_disabled = false, bool hit_test = false);
     uint32_t child_from_point(Window* parent, Point client_pt, bool all = false);
 
     // Painting
@@ -609,7 +609,16 @@ void install_dialog(Emulator& e);
 void install_controls(Emulator& e);
 void install_comctl(Emulator& e);
 void install_shell_ole(Emulator& e);
+void install_gdiplus(Emulator& e);
 void install_all(Emulator& e);
+
+// For GDI+ (gdi.cpp): draws a top-down 32-bpp image of sw x sh pixels,
+// stretched to the logical rectangle (x, y, w, h) of a DC - blended as
+// premultiplied ARGB when `alpha`, copied otherwise.
+bool draw_image_32(Gui& g, uint32_t hdc, int x, int y, int w, int h, const uint32_t* px, int sw, int sh,
+                   bool alpha);
+// The pixels of a GDI bitmap, top-down, as 0x00RRGGBB.
+bool bitmap_pixels(Gui& g, uint32_t hbm, int& w, int& h, std::vector<uint32_t>& rgb);
 
 // String helpers shared by the hook files.
 std::u16string read_wstr(Emulator& e, uint64_t p, int max_units = -1);

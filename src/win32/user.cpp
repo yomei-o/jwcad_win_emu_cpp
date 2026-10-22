@@ -243,7 +243,7 @@ uint32_t Gui::child_from_point(Window* parent, Point cp, bool all) {
     return 0;
 }
 
-uint32_t Gui::window_from_point(Point sp, bool skip_disabled) {
+uint32_t Gui::window_from_point(Point sp, bool skip_disabled, bool hit_test) {
     Window* d = win(desktop);
     uint32_t hit = 0;
     for (uint32_t th : d->children) {
@@ -267,6 +267,11 @@ uint32_t Gui::window_from_point(Point sp, bool skip_disabled) {
             if (!k || !(k->style & WS_VISIBLE)) continue;
             if (!k->wrect.contains(sp.x - o.x, sp.y - o.y)) continue;
             if (skip_disabled && (k->style & WS_DISABLED)) continue;
+            // A child that answers HTTRANSPARENT is passed over for the next
+            // sibling under the point, as WindowFromPoint does: a group box
+            // lies on top of its radio buttons and must not take their clicks.
+            if (hit_test && static_cast<int16_t>(send(c, WM_NCHITTEST, 0, make_lparam(sp.x, sp.y))) == HTTRANSPARENT)
+                continue;
             ch = c;
             break;
         }
@@ -635,7 +640,7 @@ bool Gui::translate_input(const HostEvent& ev, Msg& out) {
         uint32_t target = capture;
         int ht = HTCLIENT;
         if (!target) {
-            target = window_from_point(cursor_pos, false);
+            target = window_from_point(cursor_pos, false, true);
             if (!target) {
                 nc_set_hot(*this, 0, 0, false);
                 return false;

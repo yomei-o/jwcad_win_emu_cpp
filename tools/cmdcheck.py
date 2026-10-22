@@ -114,6 +114,49 @@ T = {
     'view25d': [('btn', '2.5D'), ('wait', 2000), ('shot', 'open')],
     'shadow': [('btn', '日影'), ('wait', 1500), ('shot', 'open')],
     'sky': [('btn', '天空'), ('wait', 1500), ('shot', 'open')],
+    'open_dlg': [('btn', '開く'), ('wait', 2500), ('shot', 'open')],
+    'dxf_save': [('menu', 'ファイル'), ('L', (95, 255)), ('wait', 3000), ('shot', 'dlg')],
+    'dxf_open': [('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000), ('shot', 'dlg')],
+    'jwc_save': [('menu', 'ファイル'), ('L', (95, 202)), ('wait', 3000), ('shot', 'dlg')],
+    'jwc_open': [('menu', 'ファイル'), ('L', (95, 180)), ('wait', 3000), ('shot', 'dlg')],
+    'sfc_save': [('menu', 'ファイル'), ('L', (95, 308)), ('wait', 3000), ('shot', 'dlg')],
+    'sfc_open': [('menu', 'ファイル'), ('L', (95, 286)), ('wait', 3000), ('shot', 'dlg')],
+    'dxf_save2': [('menu', 'ファイル'), ('L', (95, 255)), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('shot', 'new'),
+                  ('L', (295, 290)), ('wait', 5000), ('shot', 'saved')],
+    'jww_saveas': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('shot', 'new'),
+                   ('text', 'ABC'), ('L', (295, 290)), ('wait', 5000), ('shot', 'saved')],
+    'save_jww': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'T_jww'), ('L', (562, 310)),
+                 ('wait', 300), ('shot', 'dialog'), ('L', (295, 290)), ('wait', 6000), ('shot', 'saved')],
+    'save_jwc': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'T_jwc'), ('L', (562, 331)),
+                 ('wait', 300), ('shot', 'dialog'), ('L', (295, 290)), ('wait', 6000), ('shot', 'saved')],
+    'save_dxf': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'T_dxf'), ('L', (562, 352)),
+                 ('wait', 300), ('shot', 'dialog'), ('L', (295, 290)), ('wait', 6000), ('shot', 'saved')],
+    'save_sfc': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'T_sfc'), ('L', (562, 372)),
+                 ('wait', 300), ('shot', 'dialog'), ('L', (295, 290)), ('wait', 6000), ('shot', 'saved')],
+    'save_p21': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'T_p21'), ('L', (562, 393)),
+                 ('wait', 300), ('shot', 'dialog'), ('L', (295, 290)), ('wait', 6000), ('shot', 'saved')],
+    'radio_try': [('btn', '保存'), ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('L', (585, 352)), ('wait', 500), ('shot', 'label'),
+                  ('L', (562, 372)), ('wait', 500), ('shot', 'circle')],
+    'open_jwc': [('put', 'tests/io/T_jwc.jwc', 'T_jwc.jwc'), ('btn', '開く'), ('wait', 3000), ('L', (302, 131)), ('wait', 800),
+                 ('L', (293, 161)), ('wait', 2500), ('shot', 'list'), ('LL', (410, 205)), ('wait', 8000), ('shot', 'opened')],
+    'open_dxf': [('put', 'tests/io/T_dxf.dxf', 'T_dxf.dxf'), ('btn', '開く'), ('wait', 3000), ('L', (302, 131)), ('wait', 800),
+                 ('L', (293, 175)), ('wait', 2500), ('shot', 'list'), ('LL', (410, 205)), ('wait', 8000), ('shot', 'opened')],
+    'open_sfc': [('put', 'tests/io/T_sfc.sfc', 'T_sfc.sfc'), ('btn', '開く'), ('wait', 3000), ('L', (302, 131)), ('wait', 800),
+                 ('L', (293, 189)), ('wait', 2500), ('shot', 'list'), ('LL', (410, 205)), ('wait', 8000), ('shot', 'opened')],
+    'open_p21': [('put', 'tests/io/T_p21.p21', 'T_p21.p21'), ('btn', '開く'), ('wait', 3000), ('L', (302, 131)), ('wait', 800),
+                 ('L', (293, 203)), ('wait', 2500), ('shot', 'list'), ('LL', (410, 205)), ('wait', 8000), ('shot', 'opened')],
+    'open_dxf_menu': [('put', 'tests/io/T_dxf.dxf', 'T_dxf.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000), ('shot', 'dlg'),
+                      ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
+    'open_sfc_menu': [('put', 'tests/io/T_sfc.sfc', 'T_sfc.sfc'), ('menu', 'ファイル'), ('L', (95, 286)), ('wait', 3000), ('shot', 'dlg'),
+                      ('LL', (410, 205)), ('wait', 8000), ('shot', 'opened')],
+    'open_jwc_menu': [('put', 'tests/io/T_jwc.jwc', 'T_jwc.jwc'), ('menu', 'ファイル'), ('L', (95, 180)), ('wait', 3000), ('shot', 'dlg'),
+                      ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
+    'dxf_ext_r12': [('put', 'tests/io/ext_r12.dxf', 'ext_r12.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000),
+                 ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
+    'dxf_ext_r2000': [('put', 'tests/io/ext_r2000.dxf', 'ext_r2000.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000),
+                 ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
+    'dxf_ext_r2007': [('put', 'tests/io/ext_r2007.dxf', 'ext_r2007.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000),
+                 ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],
@@ -225,16 +268,25 @@ def run_test(name, drive):
     # Each test gets its own C: so saves cannot leak into the next one.
     c = os.path.join(outdir, 'c')
     shutil.copytree(drive, c)
+    # ('put', src, name): a file (path relative to the repo) copied into C:\jww first.
+    # ('arg', name): open C:\jww\<name> at start instead of 木造平面例.jww.
+    drawing = '木造平面例.jww'
+    for st in T[name]:
+        if st[0] == 'put':
+            shutil.copy(os.path.join(ROOT, st[1]), os.path.join(c, 'jww', st[2]))
+        elif st[0] == 'arg':
+            drawing = st[1]
     cmd = [EXE, '--headless', '--drive-c', c, '--time', str(end), '--fonts', os.path.join(ROOT, 'fonts'),
            '--dlls', os.path.join(ROOT, 'dlls'), '--script', sp, '--shot', os.path.join(outdir, 'final.png'),
-           'C:\\jww\\Jw_win.exe', 'C:\\jww\\木造平面例.jww']
+           'C:\\jww\\Jw_win.exe', 'C:\\jww\\' + drawing]
     # Below normal priority: several of these run at once (see JOBS).
     flags = 0x4000 if os.name == 'nt' else 0  # BELOW_NORMAL_PRIORITY_CLASS
     p = subprocess.run(cmd, cwd=os.path.join(c, 'jww'), env=env, capture_output=True, creationflags=flags)
     err = p.stderr.decode('utf-8', 'replace')
     with open(os.path.join(outdir, 'log.txt'), 'w', encoding='utf-8') as f:
         f.write(err)
-    shutil.rmtree(c, ignore_errors=True)
+    if not os.environ.get('KEEP_C'):
+        shutil.rmtree(c, ignore_errors=True)
     problems = []
     if p.returncode != 0:
         problems.append(f'exit {p.returncode}')
@@ -280,12 +332,16 @@ def main():
         return
     names = args or list(T)
     os.makedirs(OUT, exist_ok=True)
-    drive = os.path.join(OUT, '_drive')
+    # One per run, so that two runs at once do not pull it from under each other.
+    drive = os.path.join(OUT, f'_drive_{os.getpid()}')
     shutil.rmtree(drive, ignore_errors=True)
     shutil.copytree(os.path.join(ROOT, 'orig'), os.path.join(drive, 'jww'))
     jobs = int(os.environ.get('JOBS', '4'))
-    with ThreadPoolExecutor(jobs) as ex:
-        results = list(ex.map(lambda n: run_test(n, drive), names))
+    try:
+        with ThreadPoolExecutor(jobs) as ex:
+            results = list(ex.map(lambda n: run_test(n, drive), names))
+    finally:
+        shutil.rmtree(drive, ignore_errors=True)
     lines = []
     for name, problems in results:
         lines.append(f'{"ok " if not problems else "BAD"} {name}' + ''.join(f'\n      {p}' for p in problems))

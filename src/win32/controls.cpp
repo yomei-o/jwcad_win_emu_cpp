@@ -1380,7 +1380,8 @@ int lb_insert(Gui& g, Window* w, int at, const std::u16string& text, uint64_t da
 
 int lb_find(ListState* s, int start, const std::u16string& key, bool exact) {
     int n = static_cast<int>(s->items.size());
-    if (!n) return -1;
+    // An empty string finds nothing (LB_ERR), rather than prefixing every item.
+    if (!n || key.empty()) return -1;
     std::u16string k = upper(key);
     for (int k2 = 1; k2 <= n; ++k2) {
         int i = (start + k2) % n;
@@ -2382,7 +2383,7 @@ uint64_t combo_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t l
         case 0x014C:    // CB_FINDSTRING
         case 0x0158: {  // CB_FINDSTRINGEXACT
             std::u16string key = upper(read_item_text(lp));
-            int n = static_cast<int>(s->items.size());
+            int n = key.empty() ? 0 : static_cast<int>(s->items.size());  // "" finds nothing
             int start = static_cast<int32_t>(wp);
             for (int k = 1; k <= n; ++k) {
                 int i = start < 0 ? k - 1 : (start + k) % n;
@@ -2393,7 +2394,11 @@ uint64_t combo_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t l
         }
         case 0x014D: {  // CB_SELECTSTRING
             std::u16string key = upper(read_item_text(lp));
-            int n = static_cast<int>(s->items.size());
+            // "" selects nothing and returns CB_ERR, as in Windows: MFC's
+            // DDX_CBString sends its still-empty string first, and matching
+            // item 0 threw away the selection Jw_cad had just made (the DXF
+            // open dialog came up on .jww instead of .dxf).
+            int n = key.empty() ? 0 : static_cast<int>(s->items.size());
             int start = static_cast<int32_t>(wp);
             for (int k = 1; k <= n; ++k) {
                 int i = start < 0 ? k - 1 : (start + k) % n;

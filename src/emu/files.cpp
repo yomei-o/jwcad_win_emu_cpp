@@ -10,6 +10,7 @@
 #include <sys/types.h>
 
 #if defined(_WIN32)
+#include <direct.h>
 #include <io.h>
 #define x86emu_stat_struct struct _stat64
 #else
@@ -127,6 +128,16 @@ void FileTable::set_drive_c(std::string dir) {
 }
 
 const std::string& FileTable::drive_c() { return g_drive_c; }
+
+void FileTable::ensure_directory(const std::string& guest_path) {
+    std::string host = host_path(guest_path);
+#if defined(_WIN32)
+    std::u16string w = utf8_to_utf16(host);
+    _wmkdir(reinterpret_cast<const wchar_t*>(w.c_str()));
+#else
+    mkdir(host.c_str(), 0777);
+#endif
+}
 
 void FileTable::set_sysroot(std::string dir) {
     for (char& c : dir)

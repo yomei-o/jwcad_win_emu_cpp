@@ -412,8 +412,11 @@ void Emulator::install_win32_fs_hooks() {
     });
     win32("GetShortPathNameW", 3, [](Emulator& e) { e.set_result(0); });
     win32("GetTempPathW", 2, [](Emulator& e) {
-        const std::string* tmp = e.getenv("TEMP");
-        std::string path = tmp ? *tmp : std::string(".");
+        const std::string* tmp = e.getenv("TMP");
+        if (!tmp) tmp = e.getenv("TEMP");
+        std::string path = tmp ? *tmp : std::string("C:\\Temp");
+        // A program creates its work files there without checking first.
+        FileTable::ensure_directory(path);
         if (!path.empty() && path.back() != '\\' && path.back() != '/') path += '\\';
         std::u16string w = utf8_to_utf16(path);
         uint64_t size = e.arg_slot(0), buf = e.arg_slot(1);

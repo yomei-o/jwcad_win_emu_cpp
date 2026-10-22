@@ -148,6 +148,16 @@ public:
     }
     size_t history_size() const { return history_.size(); }
 
+    // Addresses at which on_break is called before the instruction runs - a
+    // print-the-registers probe for finding where guest code goes wrong
+    // (JWEMU_BREAK in the GUI host).
+    void add_break(uint64_t addr, std::function<void(uint64_t)> fn) {
+        breaks_.push_back(addr);
+        on_break = std::move(fn);
+        watching_ = true;
+    }
+    std::function<void(uint64_t)> on_break;
+
     // X86EMU_PROFILE=N samples the instruction pointer every N instructions and
     // reports, at exit, which mapping the samples fell in.  A guest that spends
     // six minutes somewhere will not say where on its own, and "which library"
@@ -369,6 +379,7 @@ private:
     [[noreturn]] void unsupported(const char* what, uint8_t opcode, uint64_t start_rip);
 
     std::vector<uint64_t> history_;
+    std::vector<uint64_t> breaks_;
     size_t history_pos_ = 0;
     size_t history_filled_ = 0;
     // Whether any of the per-instruction diagnostics is on.  See step(): all of
