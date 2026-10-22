@@ -46,6 +46,27 @@ public static class R {
     }
     return IntPtr.Zero;
   }
+  [DllImport("user32.dll")] public static extern bool GetClientRect(IntPtr h, out RECT r);
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr p, EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] public static extern IntPtr GetParent(IntPtr h);
+  [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int a, out RECT r, int s);
+  // The window tree with screen rectangles, client areas and styles, for the
+  // script's "dump" (same layout as the emulator's).
+  public static string Tree(IntPtr h, int depth) {
+    var sb = new System.Text.StringBuilder();
+    RECT r; GetWindowRect(h, out r);
+    RECT c; GetClientRect(h, out c); POINT p = new POINT(); ClientToScreen(h, ref p);
+    RECT d; string vis = "";
+    if (depth == 0 && DwmGetWindowAttribute(h, 9, out d, 16) == 0) vis = " visible " + d.L + "," + d.T + "-" + d.R + "," + d.B;
+    sb.AppendFormat("{0}{1:X8} {2,-24} {3,4},{4,4} {5,4}x{6,-4} client {7},{8} {9}x{10} st={11:X8} ex={12:X8} \"{13}\"{14}\n",
+      new string(' ', depth * 2), h.ToInt64(), Cls(h), r.L, r.T, r.R - r.L, r.B - r.T, p.X, p.Y, c.R, c.B,
+      GetWindowLongStyleRaw(h, -16), GetWindowLongStyleRaw(h, -20), Text(h), vis);
+    var kids = new List<IntPtr>();
+    EnumChildWindows(h, (k, l) => { if (GetParent(k) == h) kids.Add(k); return true; }, IntPtr.Zero);
+    foreach (var k in kids) sb.Append(Tree(k, depth + 1));
+    return sb.ToString();
+  }
   [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr a, int x, int y, int cx, int cy, uint f);
   [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern bool ScreenToClient(IntPtr h, ref POINT p);
@@ -195,11 +216,22 @@ foreach ($line in Get-Content -Encoding UTF8 $Script) {
         foreach ($ch in $rest.ToCharArray()) { [R]::PostMessage($w, 0x0102, [IntPtr][int]$ch, [IntPtr]1) | Out-Null }
       }
     }
+    "dump" {
+      $txt = ""
+      foreach ($h in [R]::Tops($pid0)) { $txt += [R]::Tree($h, 0) }
+      [IO.File]::WriteAllText((Join-Path $Out "tree.txt"), $txt, [Text.Encoding]::UTF8)
+    }
     "shot" {
       Start-Sleep -Milliseconds 2000
       try { $p.WaitForInputIdle(5000) | Out-Null } catch {}
       $name = Split-Path $rest -Leaf
       [R]::Shot($pid0, $main, $X0, $Y0, (Join-Path $Out $name))
+      # And the screen itself, where DWM's border and shadow show (PrintWindow
+      # leaves them out).  Other windows may be in front: use it for frames.
+      $bmp = New-Object System.Drawing.Bitmap 1280, 800
+      $g = [System.Drawing.Graphics]::FromImage($bmp)
+      $g.CopyFromScreen($X0 - 20, $Y0 - 20, 0, 0, (New-Object System.Drawing.Size 1280, 800))
+      $bmp.Save((Join-Path $Out ("screen_" + $name))); $g.Dispose(); $bmp.Dispose()
     }
   }
 }

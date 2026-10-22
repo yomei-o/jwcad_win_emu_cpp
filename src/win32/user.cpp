@@ -295,48 +295,67 @@ void Gui::ensure_surface(Window* top) {
     top->surf_h = h;
 }
 
-// A top-level window the way Windows 11's DWM shows it: the outer 7 pixels
-// on the left, right and bottom are an invisible resize border, the corners
-// are rounded with a radius of 8, and the 1-pixel border is a translucent
-// grey over whatever lies behind.
+// A top-level window the way Windows 11's DWM shows it on this machine,
+// measured on the screen next to the real Jw_cad: the outer 7 pixels on the
+// left, right and bottom are an invisible resize border, the corners are
+// square, the 1-pixel border darkens what lies behind by a third (#ABABAB
+// over white), and a soft shadow falls round the window - about 18 % at the
+// sides fading over 16 pixels, and a longer, stronger one below (31 %,
+// still 20 % twenty pixels down).  An inactive window's are lighter.
 void Gui::compose_dwm(Window* t) {
-    const int inv = kDwmInvisible, R = 8;
+    const int inv = kDwmInvisible;
     int W = std::min(t->wrect.w(), t->surf_w), H = std::min(t->wrect.h(), t->surf_h);
     int vb = H - inv;  // rows [0, vb) are visible
     bool act = t->nc_active >= 0 ? t->nc_active != 0 : active == t->hwnd;
-    int alpha = act ? 92 : 60;  // of 256, toward mid grey
-    auto blend = [&](uint32_t bg) {
-        auto ch = [&](int s) {
-            uint32_t b = (bg >> s) & 0xFF;
-            return ((b * static_cast<uint32_t>(256 - alpha) + 0x80u * static_cast<uint32_t>(alpha)) >> 8) << s;
-        };
+    auto darken = [](uint32_t c, int a256) {
+        auto ch = [&](int s) { return ((((c >> s) & 0xFF) * static_cast<uint32_t>(256 - a256)) >> 8) << s; };
         return ch(0) | ch(8) | ch(16);
     };
-    // How far a rounded corner cuts into row `d` counted from the edge.
-    auto inset = [&](int d) {
-        if (d >= R) return 0;
-        double c = R - d - 0.5;
-        return static_cast<int>(std::lround(R - std::sqrt(R * R - c * c)));
-    };
+    // The shadow, in 1/256ths of darkening, by distance from the border.
+    constexpr int kSide = 40, kTop = 30, kBelow = 70;
+    static int side[kSide + 1], top[kTop + 1], below[kBelow + 1], fade16[kBelow + 1], fade40[kBelow + 1];
+    static bool tables = false;
+    if (!tables) {
+        for (int d = 1; d <= kSide; ++d) side[d] = static_cast<int>(256 * 0.18 * std::exp(-(d - 1) / 16.0));
+        for (int d = 1; d <= kTop; ++d) top[d] = static_cast<int>(256 * 0.10 * std::exp(-(d - 1) / 10.0));
+        for (int d = 1; d <= kBelow; ++d) below[d] = static_cast<int>(256 * 0.31 * std::exp(-(d - 1) / 40.0));
+        for (int d = 0; d <= kBelow; ++d) {
+            fade16[d] = static_cast<int>(256 * std::exp(-d / 16.0));
+            fade40[d] = static_cast<int>(256 * std::exp(-d / 40.0));
+        }
+        tables = true;
+    }
+    int vl = t->wrect.l + inv, vr = t->wrect.l + W - inv, vt = t->wrect.t, vbot = t->wrect.t + vb;  // [vl,vr) x [vt,vbot)
+    int strength = act ? 256 : 140;
+    for (int y = std::max(0, vt - kTop); y < std::min(screen_h, vbot + kBelow); ++y) {
+        int dyt = y < vt ? vt - y : 0, dyb = y >= vbot ? y - vbot + 1 : 0;
+        uint32_t* dst = screen.data() + static_cast<size_t>(y) * screen_w;
+        for (int x = std::max(0, vl - kSide); x < std::min(screen_w, vr + kSide); ++x) {
+            int dx = x < vl ? vl - x : (x >= vr ? x - vr + 1 : 0);
+            if (!dx && !dyt && !dyb) {
+                x = vr - 1;  // inside: the window itself goes here below
+                continue;
+            }
+            int v;
+            if (dyb) v = std::max(below[dyb] * fade16[std::min(dx, kBelow)] >> 8, dx ? side[dx] * fade40[dyb] >> 8 : 0);
+            else if (dyt) v = std::max(top[dyt] * fade16[std::min(dx, kBelow)] >> 8, dx ? side[dx] * fade16[dyt] >> 8 : 0);
+            else v = side[dx];
+            v = v * strength >> 8;
+            if (v > 0) dst[x] = darken(dst[x], v);
+        }
+    }
+    int border = act ? 85 : 55;
     for (int sy = 0; sy < vb; ++sy) {
         int y = t->wrect.t + sy;
         if (y < 0 || y >= screen_h) continue;
-        int from_edge = std::min(sy, vb - 1 - sy);
-        int ins = inset(from_edge);
-        int outer = from_edge > 0 ? inset(from_edge - 1) : W;  // the row nearer the edge
-        int vx0 = inv + ins, vx1 = W - inv - ins;
-        if (vx1 <= vx0) continue;
         uint32_t* dst = screen.data() + static_cast<size_t>(y) * screen_w;
         const uint32_t* src = t->surface->data() + static_cast<size_t>(sy) * t->surf_w;
         bool edge_row = sy == 0 || sy == vb - 1;
-        // The border on this row: all of it on the top and bottom rows, else
-        // the run the corner steps over plus the outermost pixel.
-        int run = edge_row ? (vx1 - vx0) : std::max(1, std::min(outer, R) - ins);
-        for (int x = vx0; x < vx1; ++x) {
+        for (int x = inv; x < W - inv; ++x) {
             int sx = t->wrect.l + x;
             if (sx < 0 || sx >= screen_w) continue;
-            bool border = edge_row || x < vx0 + run || x >= vx1 - run;
-            dst[sx] = border ? blend(dst[sx]) : src[x];
+            bool edge = edge_row || x == inv || x == W - inv - 1;
+            dst[sx] = edge ? darken(dst[sx], border) : src[x];
         }
     }
 }

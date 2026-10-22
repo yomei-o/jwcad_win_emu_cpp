@@ -461,13 +461,25 @@ void Emulator::install_cl_hooks() {
         if (!by_type) return 0;
         uint64_t by_name = find_entry(by_type, name, root);
         if (!by_name) return 0;
-        // The language level: take the requested one, else the first entry,
-        // because a resource DLL usually holds exactly one language.
+        // The language level: the requested one, else as a Japanese Windows
+        // would choose - Japanese, neutral, English, then the first entry.
+        // A DLL holding every language (Wine's comctl32) lists Arabic first.
         uint64_t leaf = language ? find_entry(by_name, language, root) : 0;
         if (!leaf) {
             uint32_t count = e.mem.read16(by_name + 12) + e.mem.read16(by_name + 14);
             if (!count) return 0;
-            leaf = root + (e.mem.read32(by_name + 16 + 4) & 0x7FFFFFFFu);
+            auto rank = [](uint32_t lang) {
+                if (lang == 0x0411) return 0;
+                if ((lang & 0x3FF) == 0x11) return 1;
+                if (lang == 0 || lang == 0x0400 || lang == 0x0800) return 2;
+                if (lang == 0x0409) return 3;
+                if ((lang & 0x3FF) == 0x09) return 4;
+                return 5;
+            };
+            uint32_t pick = 0;
+            for (uint32_t i = 1; i < count; ++i)
+                if (rank(e.mem.read32(by_name + 16 + i * 8)) < rank(e.mem.read32(by_name + 16 + pick * 8))) pick = i;
+            leaf = root + (e.mem.read32(by_name + 16 + static_cast<uint64_t>(pick) * 8 + 4) & 0x7FFFFFFFu);
         }
         return leaf;
     };

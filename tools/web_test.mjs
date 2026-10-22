@@ -116,6 +116,14 @@ try {
   await shot('web_save.png');
   const users = await ev("[...document.querySelectorAll('#files tr.user td.name')].map((t) => t.textContent).join(',')");
   check(users.includes('木造平面例.jww'), 'a drawing saved by Jw_cad is marked in the panel');
+  // 文字: the input box's font list drops right under its combo box.
+  await click(85, 192); await sleep(2500);
+  await click(700, 154); await sleep(1500);
+  await shot('web_fontlist.png');
+  await send('Input.dispatchKeyEvent', {type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
+  await send('Input.dispatchKeyEvent', {type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27});
+  await sleep(500);
+  await click(85, 121); await sleep(1000);  // back to ／
   // 印刷: the printer dialog's OK, then 印刷(L) in print mode.  The PDF should
   // arrive as a download.
   const dl = path.join(OUT, 'downloads');

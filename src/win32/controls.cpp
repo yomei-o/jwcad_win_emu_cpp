@@ -1839,6 +1839,11 @@ void combo_paint(Gui& g, Window* w, uint32_t hdc) {
         draw::fill_rect_brush(g, hdc, field, brush);
     }
     draw::frame_control(g, hdc, combo_button(w), 3, 0x5 | (s->pressed ? 0x200 : 0) | (disabled ? 0x100 : 0));  // DFCS_SCROLLCOMBOBOX
+    // The field was painted over the edit child (the DC does not clip
+    // children); put the text back, or a combo box redrawn when it drops
+    // down shows an empty field.
+    if (s->edit)
+        if (Window* ew = g.win(s->edit)) edit_repaint(g, ew);
 }
 
 void combo_repaint(Gui& g, Window* w) {

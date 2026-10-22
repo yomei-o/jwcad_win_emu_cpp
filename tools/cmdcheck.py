@@ -72,6 +72,8 @@ T = {
     'circle': [('btn', '○'), ('L', 'empty3'), ('L', (300, 300)), ('shot', 'done')],
     'text': [('btn', '文字'), ('shot', 'mode'), ('text', 'ABC123'), ('L', 'empty1'), ('shot', 'done')],
     'text_typed': [('btn', '文字'), ('text', 'ABCあいう123'), ('shot', 'typed')],
+    'text_font': [('btn', '文字'), ('shot', 'box'), ('L', (700, 154)), ('wait', 800), ('shot', 'font_list'), ('key', 27),
+                  ('L', (95, 88)), ('wait', 1500), ('shot', 'dialog'), ('L', (547, 244)), ('wait', 800), ('shot', 'dialog_font_list')],
     'dimension': [('btn', '寸法'), ('shot', 'mode'), ('L', (500, 620)), ('R', 'wall_bl'), ('R', 'wall_br'), ('shot', 'done')],
     'dimension2': [('btn', '寸法'), ('L', (500, 620)), ('R', 'wall_bl'), ('shot', 'start'), ('R', (626, 557)), ('shot', 'r2'),
                    ('R', (624, 559)), ('shot', 'r3'), ('L', (700, 600)), ('shot', 'free')],

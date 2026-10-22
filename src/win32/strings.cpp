@@ -152,7 +152,22 @@ bool find_resource(Emulator& e, uint64_t hmod, uint64_t type, uint64_t name, uin
     if (!n) return false;
     uint32_t count = e.mem.read16(n + 12) + e.mem.read16(n + 14);
     if (!count) return false;
-    uint64_t leaf = root + (e.mem.read32(n + 16 + 4) & 0x7FFFFFFFu);
+    // The language, as a Japanese Windows would pick it: Japanese, then
+    // neutral, then English, then whatever comes first.  A DLL with every
+    // language (Wine's comctl32) lists Arabic first, and its property sheets
+    // came out with Arabic buttons.
+    auto rank = [](uint32_t lang) {
+        if (lang == 0x0411) return 0;
+        if ((lang & 0x3FF) == 0x11) return 1;  // other Japanese
+        if (lang == 0 || lang == 0x0400 || lang == 0x0800) return 2;
+        if (lang == 0x0409) return 3;
+        if ((lang & 0x3FF) == 0x09) return 4;
+        return 5;
+    };
+    uint32_t pick = 0;
+    for (uint32_t i = 1; i < count; ++i)
+        if (rank(e.mem.read32(n + 16 + i * 8)) < rank(e.mem.read32(n + 16 + pick * 8))) pick = i;
+    uint64_t leaf = root + (e.mem.read32(n + 16 + static_cast<uint64_t>(pick) * 8 + 4) & 0x7FFFFFFFu);
     addr = m->image.base + e.mem.read32(leaf);
     size = e.mem.read32(leaf + 4);
     return true;

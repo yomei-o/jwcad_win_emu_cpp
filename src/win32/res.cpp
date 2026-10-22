@@ -344,7 +344,7 @@ void frame_control(Gui& g, uint32_t hdc, Rect r, uint32_t type, uint32_t state) 
                 edge(g, hdc, r, pushed || checked ? 0xA : 0x5, 0xF);
                 return;
             }
-            if (kind == 0 || kind == 3 || kind == 4) {  // check boxes
+            if (kind == 0 || kind == 8) {  // DFCS_BUTTONCHECK, DFCS_BUTTON3STATE
                 // The classic box, as Windows still draws it for an unthemed
                 // button: a sunken edge round a white square, cut off by the
                 // control rather than shrunk when the control is shorter.
@@ -360,21 +360,25 @@ void frame_control(Gui& g, uint32_t hdc, Rect r, uint32_t type, uint32_t state) 
                 return;
             }
             if (kind == 1 || kind == 2 || kind == 0x4 || (state & 0x4)) {  // radio
-                Rect b{r.l, r.t, r.l + 13, r.t + 13};
-                fill_rect(g, hdc, {b.l + 2, b.t + 2, b.r - 2, b.b - 2}, inactive ? g.sys_color(15) : g.sys_color(5));
-                static const char* ring[13] = {
-                    "....xxxxx....", "..xx.....xx..", ".x.........x.", ".x.........x.", "x...........x",
-                    "x...........x", "x...........x", "x...........x", "x...........x", ".x.........x.",
-                    ".x.........x.", "..xx.....xx..", "....xxxxx....",
+                // The classic 12x12 radio button, as measured on Windows:
+                // a shadow / dark shadow ring top-left, highlight / 3D-light
+                // bottom-right, a white middle and a 4x4 dot.
+                static const char* ring[12] = {
+                    "....aaaa....", "..aaddddaa..", ".addwwwwddh.", ".adwwwwwwlh.", "adwwwwwwwwlh", "adwwwwwwwwlh",
+                    "adwwwwwwwwlh", "adwwwwwwwwlh", ".adwwwwwwlh.", ".allwwwwllh.", "..hhllllhh..", "....hhhh....",
                 };
-                for (int y = 0; y < 13; ++y)
-                    for (int x = 0; x < 13; ++x)
-                        if (ring[y][x] == 'x') fill_rect(g, hdc, {b.l + x, b.t + y, b.l + x + 1, b.t + y + 1}, g.sys_color(16));
-                if (checked) {
-                    uint32_t c = inactive ? g.sys_color(17) : 0;
-                    fill_rect(g, hdc, {b.l + 5, b.t + 4, b.l + 8, b.t + 9}, c);
-                    fill_rect(g, hdc, {b.l + 4, b.t + 5, b.l + 9, b.t + 8}, c);
-                }
+                static const char* dot[12] = {"", "", "", "", ".....##", "....####", "....####", ".....##", "", "", "", ""};
+                uint32_t mid = inactive || pushed ? g.sys_color(15) : g.sys_color(5);
+                uint32_t ink = inactive ? g.sys_color(17) : 0;
+                for (int y = 0; y < 12; ++y)
+                    for (int x = 0; x < 12; ++x) {
+                        char k = ring[y][x];
+                        if (k == '.') continue;
+                        uint32_t c = k == 'a' ? g.sys_color(16) : k == 'd' ? g.sys_color(21) : k == 'h' ? g.sys_color(20)
+                                   : k == 'l' ? g.sys_color(22) : mid;
+                        if (checked && x < static_cast<int>(std::strlen(dot[y])) && dot[y][x] == '#') c = ink;
+                        fill_rect(g, hdc, {r.l + x, r.t + y, r.l + x + 1, r.t + y + 1}, c);
+                    }
                 return;
             }
             fill_rect(g, hdc, r, g.sys_color(15));

@@ -35,6 +35,18 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
 * ヘッドレス実行のスクリプト時刻を「プログラムの時計」に変更（`main_gui.cpp` HeadlessHost）：
   計算中は進まない。並列実行や遅いマシンでも同じ所でイベントが届く
 
+### 2026-10-23（会社の PC で追加）
+
+* 文字コマンドの「書込み文字種変更」ダイアログと文字入力ボックスを本物と比較（`text_font` テスト）
+  * ラジオボタンがチェックボックスで描かれていた（DrawFrameControl の DFCS_BUTTONRADIO=4）→ 本物の 12x12 の形で描く
+  * 枠・影：この PC の Windows 11 は**角が四角**。枠は背景を約 33% 暗く、影は左右 18%→16px で減衰、
+    下は 31% で長く伸びる（実測値は `user.cpp` の compose_dwm のコメント）
+  * ドロップダウン型コンボを描き直すと子の Edit を白く塗りつぶしていた（開いた瞬間フォント名が消えた）
+  * 公開版で「フォントのリストが変な位置に出る」のは、前回直したコンボの高さ（244px のまま）の古い wasm だったため
+* 基本設定のプロパティシートのボタンがアラビア語で☒になっていた：リソースの言語を選ばず先頭を返していた
+  → 日本語・中立・英語の順に選ぶ（`strings.cpp` と `hooks_win32c.cpp` の 2 か所）
+* `realrun.ps1` に画面そのもののキャプチャ（`screen_*.png`、DWM の枠と影が写る）と `dump`（本物の窓ツリー）を追加
+
 ## 最初にやること
 
 1. `git pull`
@@ -44,7 +56,7 @@ Win32 の user32/gdi32 などは `src/win32/` に自作。comctl32 は Wine の 
    python tools/cmdcheck.py          # 全テスト。JOBS=4 で並列、結果は tmp/cmd/
    ```
    `ok` が並べば OK。`tmp/cmd/sheet_*.png` が一覧（6 枚ずつ）。
-3. WASM を作り直して push（**この回の修正は jwemu.wasm にまだ入っていない**）
+3. WASM を作り直して push（2026-10-23 時点で jwemu.wasm は最新）
    ```sh
    sh tools/build_wasm.sh
    node tools/web_test.mjs           # 線・アップロード・スクロール・開く・保存・印刷
