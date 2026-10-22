@@ -83,6 +83,9 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
    GDI 表示では GDI+ は呼ばれない（gdiplus は stub のまま）。
 7. **ファイルを開く／保存のダイアログ**（GetOpenFileName / GetSaveFileName）を新しく作った（`dialog.cpp`
    file_dialog）。これまでは JWEMU_OPEN 環境変数だけ。複数選択、拡張子なしの名前には種類の拡張子を付ける。
+8. **ANSI のファイル API**（CreateFileA・FindFirstFileA など）をエミュレータ本体は UTF-8 で読んでいた。
+   SXF の DLL は Shift-JIS のパスを渡すので日本語名の SFC/P21 が壊れた。GUI 層で CP932 → W に置き換え
+   （`Emulator::replace_hook`、`ansi.cpp` の末尾）。配布の図面 16 個すべてが一括変換で JWC/DXF/SFC/P21 になる
 
 調べるのに足した道具：
 
