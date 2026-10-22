@@ -256,6 +256,18 @@ private:
                         std::fprintf(stderr, " %u:%02X/%02X", g->emu.mem.read32(tb + 4), g->emu.mem.read8(tb + 8),
                                      g->emu.mem.read8(tb + 9));
                     }
+                    // The image list (Wine's: hbmImage at +40, hbmMask at +44) and how
+                    // much of its mask is set, i.e. transparent.
+                    if (uint64_t himl = g->send(h, 0x431 /*TB_GETIMAGELIST*/, 0, 0)) {
+                        uint32_t hmask = g->emu.mem.read32(himl + 44);
+                        int set = 0, total = 0;
+                        if (GdiObject* o = g->obj(hmask, ObjKind::Bitmap)) {
+                            const PixelBuf& pb = o->bitmap->px;
+                            for (int y = 0; y < pb.h; ++y)
+                                for (int x = 0; x < pb.w; ++x, ++total) set += (pb.get(x, y) & 0xFFFFFF) != 0;
+                        }
+                        std::fprintf(stderr, " | mask %08X: %d of %d set", hmask, set, total);
+                    }
                     std::fprintf(stderr, "\n");
                 }
                 g->emu.heap_free(tb);
@@ -461,6 +473,10 @@ void install_breaks(Emulator& emu) {
         static const char* names[] = {"eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"};
         std::fprintf(stderr, "[break] 0x%llX", (unsigned long long)at);
         for (int i = 0; i < 8; ++i) std::fprintf(stderr, " %s=%llX", names[i], (unsigned long long)(r[i] & 0xFFFFFFFF));
+        // The top of the stack: at a function's first instruction, the return
+        // address and then the arguments.
+        std::fprintf(stderr, "\n    stack:");
+        for (int k = 0; k < 7; ++k) std::fprintf(stderr, " %08X", emu.mem.read32((r[4] & 0xFFFFFFFF) + 4 * k));
         std::fprintf(stderr, "\n");
         auto wstr = [&emu](uint64_t p) {
             std::string s;

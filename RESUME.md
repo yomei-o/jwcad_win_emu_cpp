@@ -143,18 +143,13 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
 3. **基設（基本設定）のタブ**がただの文字列に見える（Wine comctl32 の SysTabControl32）。本物と比較
 4. **建平・建断・建立**のファイル選択が空。本物も空か確認
 5. **ホイールで拡大縮小しない**。本物の既定値も無効かもしれない。確認
-6. 押下中のツールバーボタン（「／」など）が本物は市松模様、こちらは単色。調べた所：左のパレットは Wine の
-   ToolbarWindow32（TBSTYLE_FLAT なし、テーマなし）。Wine は CDIS_CHECKED かつ非 hot のときだけ
-   TOOLBAR_DrawPattern（55AA のパターンブラシで PatBlt）を呼ぶが、呼ばれていない＝ボタンが CHECKED になっていない
-   と思ったが、`--script` の `tbstate`（各ツールバーのボタン id:TBSTATE/BTNS）で見るとボタンは CHECKED（0x25）。
-   TOOLBAR_DrawPattern（comctl32 内 0x6009EB63 の PatBlt PATCOPY）も呼ばれている。つまり市松を描いた後に
-   ボタンの絵が不透明に上書きしている。Wine の ImageList は 32bpp のビットマップを add_with_alpha で取り込み、
-   GetDIBits のアルファが 0 ならマスク（ImageList_AddMasked が clrBtnFace で作る）で背景を抜く。
-   ImageList_DrawIndirect は透明の道（黒で塗る→SRCAND マスク→SRCPAINT 絵→画面に SRCAND マスク→SRCPAINT）を通っている。
-   それで絵の背景 F0F0F0 がそのまま出る＝**マスクが全部 0**。原因は (a) ImageList_AddMasked の色→モノクロ BitBlt
-   （SetBkColor(clrBtnFace) の画素を 1 にする）が 1 を作っていない、か (b) Jw_cad/MFC がマスク無しの
-   イメージリストを TB_SETIMAGELIST で渡している、のどちらか。次はイメージリストのマスクを書き出して確かめる。
-   なお Jw_win.exe のマニフェストに Common-Controls 6.0 は無い（本物もクラシック表示）。基設のタブもクラシックの見た目で正しいはず
+6. 押下中のツールバーボタン（「／」など）が本物は市松模様、こちらは単色。**原因は Wine の comctl32 そのもの**：
+   toolbar.c の TOOLBAR_DrawButton は先に TOOLBAR_DrawPattern（55AA のパターンで PatBlt）を描き、その後の
+   TOOLBAR_DrawFrame が DrawEdge(EDGE_SUNKEN, BF_RECT|BF_MIDDLE) で中を COLOR_BTNFACE で塗りつぶす
+   （Wine 8.0 も master も同じ順。user32 uitools.c の BF_MIDDLE は FillRect）。エミュレータの GDI は正しい
+   （パターン・マスク〔`tbstate` で 7 割が透明〕・ImageList_DrawIndirect の透明の道まで確認済み）。
+   本物に合わせるには comctl32.dll を作り直して順番を入れ替える必要があり、ユーザーの判断待ち。
+   Jw_win.exe のマニフェストに Common-Controls 6.0 は無い（本物もクラシック表示）。基設のタブもクラシックの見た目で正しいはず
    TrackMouseEvent（WM_MOUSELEAVE）は実装した
 7. メニューなどの文字幅：本物は Yu Gothic UI。代わりのフォントが横に広い（「ファイル(F)」本物 46px / こちら 60px）
 8. 未実装 import の一覧：`--script` に `4000 dump` の 1 行を書くと `[unimplemented]` で出る。
