@@ -579,6 +579,7 @@ void install_shell_ole(Emulator& e) {
         uint32_t cap = e.mem.read32(ofn + 32);
         if (!file || !cap) return ret(e, 0);
         uint32_t flags = e.mem.read32(ofn + 52);
+        e.log_call("%s: flags %X, buffer %u", save ? "GetSaveFileName" : "GetOpenFileName", flags, cap);
         std::u16string p;
         if (const char* env = std::getenv(save ? "JWEMU_SAVE" : "JWEMU_OPEN"); env && *env) {
             p = from_utf8(env);
@@ -612,15 +613,32 @@ void install_shell_ole(Emulator& e) {
             if (uint64_t d = e.mem.read32(ofn + 60)) req.def_ext = read_wstr(e, d);
             req.must_exist = (flags & 0x1000) != 0;      // OFN_FILEMUSTEXIST
             req.overwrite_prompt = (flags & 0x2) != 0;   // OFN_OVERWRITEPROMPT
+            req.multi = !save && (flags & 0x200) != 0;   // OFN_ALLOWMULTISELECT
             if (!x86emu::win32::file_dialog(gui(e), e.mem.read32(ofn + 4), req)) return ret(e, 0);
             p = req.result;
             e.mem.write32(ofn + 24, static_cast<uint32_t>(req.filter_index + 1));
+            if (req.multi && req.results.size() > 1) {
+                // Explorer style: the folder, then each name, NUL after each and one more at the end.
+                std::u16string list = p;
+                for (const auto& n : req.results) list += u'\0' + n;
+                if (list.size() + 2 > cap) {
+                    e.mem.write16(file, static_cast<uint16_t>(list.size() + 2));
+                    return ret(e, 0);  // FNERR_BUFFERTOOSMALL
+                }
+                for (size_t i = 0; i < list.size(); ++i) e.mem.write16(file + i * 2, list[i]);
+                e.mem.write16(file + list.size() * 2, 0);
+                e.mem.write16(file + list.size() * 2 + 2, 0);
+                e.mem.write16(ofn + 56, static_cast<uint16_t>(p.size() + 1));  // nFileOffset: the first name
+                e.mem.write16(ofn + 58, 0);
+                return ret(e, 1);
+            }
         }
-        if (p.size() + 1 > cap) {
-            e.mem.write16(file, static_cast<uint16_t>(p.size() + 1));  // what a big enough buffer would be
+        if (p.size() + 2 > cap) {
+            e.mem.write16(file, static_cast<uint16_t>(p.size() + 2));  // what a big enough buffer would be
             return ret(e, 0);
         }
         write_wstr(e, file, p, static_cast<int>(cap));
+        e.mem.write16(file + (p.size() + 1) * 2, 0);  // a multi-select reader stops at the double NUL
         if (uint64_t t = e.mem.read32(ofn + 36))
             write_wstr(e, t, p.substr(p.find_last_of(u"\\/") + 1), static_cast<int>(e.mem.read32(ofn + 40)));
         size_t sep = p.find_last_of(u"\\/");

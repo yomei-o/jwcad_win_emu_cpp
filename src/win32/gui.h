@@ -686,7 +686,9 @@ struct FileDialogRequest {
     std::u16string name;       // the name box to begin with
     std::u16string def_ext;    // added to a saved name without an extension
     bool must_exist = false, overwrite_prompt = false;
-    std::u16string result;
+    bool multi = false;        // OFN_ALLOWMULTISELECT: several files from one folder
+    std::u16string result;     // the full path; with `multi`, the folder when results has more than one
+    std::vector<std::u16string> results;  // with `multi`: the names chosen (one: the full path)
 };
 bool file_dialog(Gui& g, uint32_t owner, FileDialogRequest& req);
 

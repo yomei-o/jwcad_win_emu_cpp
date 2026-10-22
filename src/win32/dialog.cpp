@@ -1000,12 +1000,49 @@ void fd_fill(Gui& g, uint32_t hwnd) {
     for (const auto& [n, is_dir] : fd.entries) send_text(g, list, LB_ADDSTRING, 0, is_dir ? u"[" + n + u"]" : n);
 }
 
+// The names in the name box: one, or several in quotes ("a.jwc" "b.jwc").
+std::vector<std::u16string> fd_names(const std::u16string& text) {
+    std::vector<std::u16string> out;
+    if (text.find(u'"') == std::u16string::npos) {
+        std::u16string s = text;
+        while (!s.empty() && s.back() == u' ') s.pop_back();
+        while (!s.empty() && s.front() == u' ') s.erase(0, 1);
+        if (!s.empty()) out.push_back(s);
+        return out;
+    }
+    size_t at = 0;
+    while ((at = text.find(u'"', at)) != std::u16string::npos) {
+        size_t end = text.find(u'"', at + 1);
+        if (end == std::u16string::npos) break;
+        if (end > at + 1) out.push_back(text.substr(at + 1, end - at - 1));
+        at = end + 1;
+    }
+    return out;
+}
+
+bool fd_accept_one(Gui& g, uint32_t hwnd, std::u16string name);
+
 // OK, or a double click on a file: what the name box says, resolved.
 bool fd_accept(Gui& g, uint32_t hwnd) {
     FileDlg& fd = *g_fd;
-    std::u16string name = fd_text(g, find_item_by_id(g, hwnd, kFdName));
-    while (!name.empty() && name.back() == u' ') name.pop_back();
-    if (name.empty()) return false;
+    std::vector<std::u16string> names = fd_names(fd_text(g, find_item_by_id(g, hwnd, kFdName)));
+    if (names.empty()) return false;
+    if (names.size() == 1 || !fd.req->multi) return fd_accept_one(g, hwnd, names[0]);
+    // Several files, all in the folder shown.
+    FileTable::Stat st;
+    for (const auto& n : names) {
+        if (fd.req->must_exist && FileTable::stat_path(to_utf8(join_path(fd.dir, n)), st) != 0) {
+            message_box(g, hwnd, n + u"\nファイルが見つかりません。\nファイル名を確認してください。", fd.req->title, 0x30);
+            return false;
+        }
+    }
+    fd.result = fd.dir;
+    fd.req->results = names;
+    return true;
+}
+
+bool fd_accept_one(Gui& g, uint32_t hwnd, std::u16string name) {
+    FileDlg& fd = *g_fd;
     std::u16string full = (name.size() > 1 && (name[1] == u':' || name[0] == u'\\')) ? name : join_path(fd.dir, name);
     // A folder: go into it.
     FileTable::Stat st;
@@ -1033,7 +1070,25 @@ bool fd_accept(Gui& g, uint32_t hwnd) {
         message_box(g, hwnd, shown + u" は既に存在します。\n上書きしますか?", fd.req->title, 0x34) != 6 /*IDYES*/)
         return false;
     fd.result = full;
+    fd.req->results = {full};
     return true;
+}
+
+// With several files selected, the name box lists them in quotes.
+void fd_show_selection(Gui& g, uint32_t hwnd) {
+    FileDlg& fd = *g_fd;
+    uint32_t list = find_item_by_id(g, hwnd, kFdList);
+    int n = static_cast<int>(g.send(list, 0x190 /*LB_GETSELCOUNT*/, 0, 0));
+    if (n <= 1) return;
+    uint64_t buf = g.emu.heap_alloc(static_cast<uint64_t>(n) * 4);
+    n = static_cast<int>(g.send(list, 0x191 /*LB_GETSELITEMS*/, static_cast<uint64_t>(n), buf));
+    std::u16string text;
+    for (int k = 0; k < n; ++k) {
+        size_t i = g.emu.mem.read32(buf + static_cast<uint64_t>(k) * 4);
+        if (i < fd.entries.size() && !fd.entries[i].second) text += (text.empty() ? u"\"" : u" \"") + fd.entries[i].first + u"\"";
+    }
+    g.emu.heap_free(buf);
+    if (!text.empty()) send_text(g, find_item_by_id(g, hwnd, kFdName), WM_SETTEXT, 0, text);
 }
 
 uint64_t file_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t) {
@@ -1047,6 +1102,7 @@ uint64_t file_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t) {
         if (i < 0 || i >= static_cast<int>(fd.entries.size())) return 1;
         auto [name, is_dir] = fd.entries[static_cast<size_t>(i)];
         if (!is_dir) send_text(g, find_item_by_id(g, hwnd, kFdName), WM_SETTEXT, 0, name);
+        if (code == 1 && fd.req->multi) fd_show_selection(g, hwnd);
         if (code == 2) {
             if (is_dir) {
                 fd.dir = name == u".." ? parent_dir(fd.dir) : join_path(fd.dir, name);
@@ -1107,7 +1163,8 @@ bool file_dialog(Gui& g, uint32_t owner, FileDialogRequest& req) {
     };
     child(u"Static", u"場所:", 0, 0, 12, 14, 50, 18, 0xFFFF);
     child(u"Static", u"", 0x80 /*SS_NOPREFIX*/, 0, 64, 14, cw - 76, 18, kFdPath);
-    child(u"ListBox", u"", 0x1 /*LBS_NOTIFY*/ | 0x100 /*LBS_NOINTEGRALHEIGHT*/ | WS_VSCROLL | WS_TABSTOP, 0x200, 12, 38,
+    child(u"ListBox", u"", 0x1 /*LBS_NOTIFY*/ | 0x100 /*LBS_NOINTEGRALHEIGHT*/ | (req.multi ? 0x800u /*LBS_EXTENDEDSEL*/ : 0u) |
+                                WS_VSCROLL | WS_TABSTOP, 0x200, 12, 38,
           cw - 24, 214, kFdList);
     child(u"Static", u"ファイル名:", 0, 0, 12, 268, 96, 18, 0xFFFF);
     uint32_t name = child(u"Edit", req.name, 0x80 /*ES_AUTOHSCROLL*/ | WS_TABSTOP, 0x200, 110, 264, cw - 122, 22, kFdName);
