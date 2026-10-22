@@ -141,7 +141,22 @@ def misc():
     write('ext_misc.dxf', text, 'cp932')
 
 
+def ellipses():
+    # Tilted ellipses and an elliptical arc (Jw_cad keeps them as its own
+    # rotated ellipses).
+    e = ''
+    c, s30 = math.cos(math.radians(30)), math.sin(math.radians(30))
+    e += pairs(0, 'ELLIPSE', 8, '0', 62, 1, 10, 0, 20, 0, 30, 0, 11, 1000 * c, 21, 1000 * s30, 31, 0,
+               210, 0, 220, 0, 230, 1, 40, 0.4, 41, 0, 42, 2 * math.pi)
+    e += pairs(0, 'ELLIPSE', 8, '0', 62, 5, 10, 2500, 20, 0, 30, 0, 11, 0, 21, 800, 31, 0,
+               210, 0, 220, 0, 230, 1, 40, 0.5, 41, 0, 42, math.pi)
+    e += pairs(0, 'LINE', 8, '0', 10, -1200, 20, 0, 30, 0, 11, 3500, 21, 0, 31, 0)
+    write('ext_ellipse.dxf', header('AC1015', 'ANSI_932') + pairs(0, 'SECTION', 2, 'ENTITIES') + e +
+          pairs(0, 'ENDSEC', 0, 'EOF'), 'cp932')
+
+
 if __name__ == '__main__':
+    ellipses()
     misc()
     r12()
     modern('ext_r2000.dxf', 'AC1015', 'ANSI_932', 'cp932', '寝室　６畳', '設計メモ\\P２行目')

@@ -230,6 +230,7 @@ T = {
     'dxf_ext_misc': [('put', 'tests/io/ext_misc.dxf', 'ext_misc.dxf'), ('arg', 'ext_misc.dxf'), ('wait', 3000), ('shot', 'opened')],
     'text_rotated': [('btn', '文字'), ('wait', 800), ('L', (340, 88)), ('text', '30'), ('key', 9), ('wait', 300),
                      ('L', (300, 154)), ('text', 'ABC回転テキスト'), ('L', (300, 400)), ('wait', 1500), ('shot', 'placed')],
+    'dxf_ext_ellipse': [('put', 'tests/io/ext_ellipse.dxf', 'ext_ellipse.dxf'), ('arg', 'ext_ellipse.dxf'), ('wait', 3000), ('shot', 'opened')],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],
