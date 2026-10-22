@@ -280,6 +280,17 @@ async function start() {
       canvas.style.cursor = cursors[m.id] || 'default';
     } else if (m.type === 'clipboard') {
       if (navigator.clipboard) navigator.clipboard.writeText(m.text).catch(() => {});
+    } else if (m.type === 'printed') {
+      // A print job: the PDF goes straight to the browser's downloads, and
+      // the PDF and PNG stay in C:\jww\印刷 in the panel.
+      const name = m.path.slice(m.path.lastIndexOf('/') + 1);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([m.data], {type: 'application/pdf'}));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      tell('印刷しました: ' + winPath(m.path) + '（PNG も同じフォルダにあります）');
+      sync();
     } else if (m.type === 'persist') {
       try { localStorage.setItem('jwemu-registry', m.text); } catch (err) {}
     }

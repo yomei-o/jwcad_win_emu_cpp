@@ -114,6 +114,24 @@ try {
   await shot('web_save.png');
   const users = await ev("[...document.querySelectorAll('#files tr.user td.name')].map((t) => t.textContent).join(',')");
   check(users.includes('木造平面例.jww'), 'a drawing saved by Jw_cad is marked in the panel');
+  // 印刷: the printer dialog's OK, then 印刷(L) in print mode.  The PDF should
+  // arrive as a download.
+  const dl = path.join(OUT, 'downloads');
+  fs.rmSync(dl, {recursive: true, force: true});
+  fs.mkdirSync(dl, {recursive: true});
+  await send('Browser.setDownloadBehavior', {behavior: 'allow', downloadPath: dl});
+  await click(940, 216); await sleep(2500);
+  await click(660, 481); await sleep(2500);
+  await click(66, 89);
+  let pdfs = [];
+  for (let i = 0; i < 60 && !pdfs.length; i++) {
+    await sleep(1000);
+    pdfs = fs.readdirSync(dl).filter((f) => f.endsWith('.pdf'));
+  }
+  await shot('web_print.png');
+  check(pdfs.length === 1 && fs.readFileSync(path.join(dl, pdfs[0])).subarray(0, 5).toString() === '%PDF-',
+        'printing downloads a PDF (' + pdfs.join(',') + ')');
+  console.log('note: ' + await ev("document.getElementById('note').textContent"));
   console.log(logs.slice(-15).join('\n'));
 } finally {
   ws.close();

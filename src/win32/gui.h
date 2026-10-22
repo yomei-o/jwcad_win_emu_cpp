@@ -223,6 +223,11 @@ struct DC {
     // The window part of the clip, cached against Gui::geom_ver.
     uint64_t vis_ver = ~0ull;
     Region vis_cache;
+    // A printer DC (print.cpp): the page being drawn, between StartPage and
+    // EndPage, and the paper it is on.
+    std::shared_ptr<Bitmap> page;
+    int prn_paper = 0;
+    bool prn_landscape = false, prn_color = true;
 };
 
 // ---------------------------------------------------------------------------
@@ -638,5 +643,18 @@ uint32_t text_metrics_height(Gui& g, uint32_t font);
 // Called after the registry file is rewritten, so a front end without a
 // persistent filesystem (the browser) can keep a copy elsewhere.
 extern std::function<void(const std::string&)> registry_saved_hook;
+
+// Printing (print.cpp): a printer DC for CreateDC, and what GetDeviceCaps
+// says about one.  print_done_hook is called with the guest path of each PDF
+// a print job wrote.
+uint32_t create_printer_dc(Gui& g, uint64_t devmode);
+bool is_printer_name(const std::u16string& name);
+uint64_t printer_device_caps(const DC& d, int index);
+void install_print(Emulator& e);
+extern std::function<void(const std::string&)> print_done_hook;
+
+// The print / printer-setup dialog (dialog.cpp).  Returns false on cancel.
+bool print_dialog(Gui& g, uint32_t owner, bool setup, const std::vector<std::u16string>& papers,
+                  int& paper, bool& landscape, bool& color);
 
 }  // namespace x86emu::win32

@@ -741,6 +741,107 @@ int message_box(Gui& g, uint32_t owner, const std::u16string& text, const std::u
     return r <= 0 ? (btns.size() == 1 ? 1 : 2) : static_cast<int>(r);
 }
 
+// The print dialog's controls, and where OK leaves what they say.
+constexpr uint32_t IDOK = 1, IDCANCEL = 2, BM_GETCHECK = 0xF0, BM_SETCHECK = 0xF1;
+constexpr uint32_t CB_ADDSTRING = 0x143, CB_GETCURSEL = 0x147, CB_SETCURSEL = 0x14E;
+constexpr uint32_t kPrnPaper = 100, kPrnPortrait = 101, kPrnLandscape = 102, kPrnColor = 103;
+struct PrintChoice {
+    int paper = 0;
+    bool landscape = false, color = true;
+};
+PrintChoice* g_print_choice = nullptr;
+
+uint64_t print_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t) {
+    if (msg != WM_COMMAND || (wp >> 16) != 0) return 0;
+    uint32_t id = static_cast<uint32_t>(wp & 0xFFFF);
+    Window* w = g.win(hwnd);
+    if (!w) return 0;
+    if (id == kPrnPortrait || id == kPrnLandscape) {
+        g.send(find_item_by_id(g, hwnd, kPrnPortrait), BM_SETCHECK, id == kPrnPortrait, 0);
+        g.send(find_item_by_id(g, hwnd, kPrnLandscape), BM_SETCHECK, id == kPrnLandscape, 0);
+        return 1;
+    }
+    if (id != IDOK && id != IDCANCEL) return 0;
+    if (id == IDOK && g_print_choice) {
+        int sel = static_cast<int>(g.send(find_item_by_id(g, hwnd, kPrnPaper), CB_GETCURSEL, 0, 0));
+        if (sel >= 0) g_print_choice->paper = sel;
+        g_print_choice->landscape = g.send(find_item_by_id(g, hwnd, kPrnLandscape), BM_GETCHECK, 0, 0) != 0;
+        g_print_choice->color = g.send(find_item_by_id(g, hwnd, kPrnColor), BM_GETCHECK, 0, 0) != 0;
+    }
+    w->dlg_ended = true;
+    w->dlg_result = id;
+    return 1;
+}
+
+}  // namespace
+
+bool print_dialog(Gui& g, uint32_t owner, bool setup, const std::vector<std::u16string>& papers,
+                  int& paper, bool& landscape, bool& color) {
+    static uint64_t proc_hook = 0;
+    if (!proc_hook) {
+        proc_hook = g.emu.add_hook("__print_dlgproc", g.emu.is64() ? 0 : 16, [](Emulator& e) {
+            ret(e, print_proc(gui(e), U(e, 0), U(e, 1), A(e, 2), A(e, 3)));
+        });
+    }
+    uint32_t font = default_gui_font(g);
+    const int cw = 340, ch = 190;
+    uint32_t style = WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | WS_CLIPSIBLINGS;
+    Rect ins = g.nc_insets(style, WS_EX_DLGMODALFRAME, false, cw);
+    int ww = cw + ins.l + ins.r, wh = ch + ins.t + ins.b;
+    uint32_t top_owner = owner;
+    if (Window* ow = g.win(owner)) {
+        Window* t = g.toplevel_of(ow);
+        top_owner = t ? t->hwnd : 0;
+    }
+    uint32_t hwnd = g.create_window(WS_EX_DLGMODALFRAME | 0x8, u"#32770", 32770, setup ? u"プリンタの設定" : u"印刷", style,
+                                    (g.screen_w - ww) / 2, (g.screen_h - wh) / 2, ww, wh, top_owner, 0, 0, 0, false);
+    if (!hwnd) return false;
+    Window* w = g.win(hwnd);
+    w->is_dialog = true;
+    if (w->extra.size() < 30) w->extra.resize(30, 0);
+    set_extra(w, DWLP_DLGPROC, static_cast<uint32_t>(proc_hook));
+    w->font = font;
+    auto child = [&](const char16_t* cls, const std::u16string& text, uint32_t st, int x, int y, int cx, int cy, uint32_t id) {
+        uint32_t c = g.create_window(0, cls, 0, text, WS_CHILD | WS_VISIBLE | st, x, y, cx, cy, hwnd, id, 0, 0, false);
+        if (c) g.send(c, WM_SETFONT, font, 0);
+        return c;
+    };
+    child(u"Static", u"プリンタ:  PDF / PNG 出力", 0, 16, 14, 300, 18, 0xFFFF);
+    child(u"Static", u"C:\\jww\\印刷 に PDF と PNG を書き出します", 0, 16, 34, 310, 18, 0xFFFF);
+    child(u"Static", u"用紙サイズ", 0, 16, 70, 80, 18, 0xFFFF);
+    uint32_t combo = child(u"ComboBox", u"", 3 /*CBS_DROPDOWNLIST*/ | WS_TABSTOP, 110, 66, 150, 220, kPrnPaper);
+    for (const auto& p : papers) {
+        std::vector<uint16_t> buf(p.begin(), p.end());
+        buf.push_back(0);
+        uint64_t s = g.emu.heap_alloc(buf.size() * 2);
+        g.emu.mem.write(s, buf.data(), buf.size() * 2);
+        g.send(combo, CB_ADDSTRING, 0, s);
+        g.emu.heap_free(s);
+    }
+    g.send(combo, CB_SETCURSEL, static_cast<uint64_t>(paper), 0);
+    child(u"Static", u"印刷の向き", 0, 16, 102, 80, 18, 0xFFFF);
+    uint32_t por = child(u"Button", u"縦", 4 /*BS_RADIOBUTTON*/ | WS_GROUP | WS_TABSTOP, 110, 100, 60, 20, kPrnPortrait);
+    uint32_t lan = child(u"Button", u"横", 4, 180, 100, 60, 20, kPrnLandscape);
+    g.send(landscape ? lan : por, BM_SETCHECK, 1, 0);
+    uint32_t col = child(u"Button", u"カラー", 3 /*BS_AUTOCHECKBOX*/ | WS_GROUP | WS_TABSTOP, 110, 128, 100, 20, kPrnColor);
+    g.send(col, BM_SETCHECK, color ? 1 : 0, 0);
+    uint32_t ok = child(u"Button", u"OK", 1 /*BS_DEFPUSHBUTTON*/ | WS_TABSTOP, cw - 190, ch - 36, 80, 24, IDOK);
+    child(u"Button", u"キャンセル", WS_TABSTOP, cw - 100, ch - 36, 80, 24, IDCANCEL);
+    w->dlg_def_id = IDOK;
+    PrintChoice choice{paper, landscape, color};
+    g_print_choice = &choice;
+    g.show_window(hwnd, 1);
+    if (ok) g.set_focus(ok);
+    int64_t r = run_dialog_modal(g, hwnd, top_owner);
+    g_print_choice = nullptr;
+    if (r != IDOK) return false;
+    paper = choice.paper;
+    landscape = choice.landscape;
+    color = choice.color;
+    return true;
+}
+
+namespace {
 }  // namespace
 
 // ---------------------------------------------------------------------------

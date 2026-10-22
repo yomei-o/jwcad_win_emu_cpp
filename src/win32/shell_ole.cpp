@@ -387,26 +387,6 @@ void install_shell_ole(Emulator& e) {
     api(e, "ImmIsIME", 1, [](Emulator& e) { ret(e, 1); });
     api(e, "ImmGetDefaultIMEWnd", 1, [](Emulator& e) { ret(e, 0); });
 
-    // ---- winspool: no printers -------------------------------------------------------------
-    api(e, "OpenPrinterW", 3, [](Emulator& e) {
-        if (A(e, 1)) e.mem.write32(A(e, 1), 0);
-        e.set_last_error(1801);  // ERROR_INVALID_PRINTER_NAME
-        ret(e, 0);
-    });
-    api(e, "ClosePrinter", 1, [](Emulator& e) { ret(e, 1); });
-    api(e, "DocumentPropertiesW", 6, [](Emulator& e) { ret(e, static_cast<uint64_t>(-1) & 0xFFFFFFFF); });
-    api(e, "GetJobW", 6, [](Emulator& e) { ret(e, 0); });
-    api(e, "EnumPrintersW", 7, [](Emulator& e) {
-        if (A(e, 5)) e.mem.write32(A(e, 5), 0);
-        if (A(e, 6)) e.mem.write32(A(e, 6), 0);
-        ret(e, 1);
-    });
-    api(e, "GetDefaultPrinterW", 2, [](Emulator& e) {
-        e.set_last_error(1722);
-        ret(e, 0);
-    });
-    api(e, "DeviceCapabilitiesW", 5, [](Emulator& e) { ret(e, static_cast<uint64_t>(-1) & 0xFFFFFFFF); });
-
     // ---- gdiplus: starts, loads nothing ------------------------------------------------------
     api(e, "GdiplusStartup", 3, [](Emulator& e) {
         if (A(e, 0)) e.mem.write32(A(e, 0), 0x00600DD1);
@@ -516,7 +496,6 @@ void install_shell_ole(Emulator& e) {
     api(e, "GetSaveFileNameW", 1, [file_dialog](Emulator& e) { file_dialog(e, true); });
     api(e, "ChooseColorW", 1, [](Emulator& e) { ret(e, 0); });
     api(e, "ChooseFontW", 1, [](Emulator& e) { ret(e, 0); });
-    api(e, "PrintDlgW", 1, [](Emulator& e) { ret(e, 0); });
     api(e, "PrintDlgExW", 1, [](Emulator& e) { ret(e, E_FAIL); });
     api(e, "PageSetupDlgW", 1, [](Emulator& e) { ret(e, 0); });
     api(e, "FindTextW", 1, [](Emulator& e) { ret(e, 0); });

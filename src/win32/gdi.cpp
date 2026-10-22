@@ -38,6 +38,13 @@ Bitmap* dc_bitmap(Gui& g, DC* d) {
 }
 
 bool resolve(Gui& g, DC* d, Resolved& r) {
+    if (d->kind == DC::Kind::Printer) {
+        if (!d->page) return false;  // outside StartPage/EndPage
+        r.ppb = &d->page->px;
+        r.bmp = d->page.get();
+        r.org = {0, 0};
+        return true;
+    }
     if (d->kind == DC::Kind::Memory) {
         Bitmap* b = dc_bitmap(g, d);
         if (!b || !b->px.bits) return false;
@@ -1575,11 +1582,15 @@ void install_gdi(Emulator& e) {
         Gui& g = gui(e);
         std::u16string drv = A(e, 0) ? upper(read_wstr(e, A(e, 0))) : u"";
         if (drv == u"DISPLAY") return ret(e, g.create_dc(DC::Kind::Window, g.desktop, true));
-        // No printers.
+        std::u16string dev = A(e, 1) ? read_wstr(e, A(e, 1)) : u"";
+        if (drv == u"WINSPOOL" || is_printer_name(dev)) return ret(e, create_printer_dc(g, A(e, 3)));
         ret(e, 0);
     });
     api(e, "CreateICW", 4, [](Emulator& e) {
         Gui& g = gui(e);
+        std::u16string drv = A(e, 0) ? upper(read_wstr(e, A(e, 0))) : u"";
+        std::u16string dev = A(e, 1) ? read_wstr(e, A(e, 1)) : u"";
+        if (drv == u"WINSPOOL" || is_printer_name(dev)) return ret(e, create_printer_dc(g, A(e, 3)));
         ret(e, g.create_dc(DC::Kind::Info, 0, false));
     });
     api(e, "DeleteDC", 1, [](Emulator& e) {
@@ -1664,6 +1675,7 @@ void install_gdi(Emulator& e) {
         DC* d = g.dc(A(e, 0));
         int idx = I(e, 1);
         int w = g.screen_w, h = g.screen_h;
+        if (d && d->kind == DC::Kind::Printer) return ret(e, printer_device_caps(*d, idx));
         if (d && d->kind == DC::Kind::Memory) {
             // A memory DC answers for the display it is compatible with.
         }
@@ -3035,15 +3047,7 @@ void install_gdi(Emulator& e) {
     api(e, "EnumFontFamiliesW", 4, [enum_fonts](Emulator& e) { enum_fonts(e, false); });
     api(e, "EnumFontsW", 4, [enum_fonts](Emulator& e) { enum_fonts(e, false); });
 
-    // ---- printing: none --------------------------------------------------------------
-    api(e, "StartDocW", 2, [](Emulator& e) { ret(e, 0); });
-    api(e, "EndDoc", 1, [](Emulator& e) { ret(e, 0); });
-    api(e, "StartPage", 1, [](Emulator& e) { ret(e, 0); });
-    api(e, "EndPage", 1, [](Emulator& e) { ret(e, 0); });
-    api(e, "AbortDoc", 1, [](Emulator& e) { ret(e, 0); });
-    api(e, "SetAbortProc", 2, [](Emulator& e) { ret(e, 0); });
-    api(e, "Escape", 5, [](Emulator& e) { ret(e, 0); });
-    api(e, "ExtEscape", 6, [](Emulator& e) { ret(e, 0); });
+    // ---- metafiles: none --------------------------------------------------------------
     api(e, "CopyMetaFileW", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "DeleteMetaFile", 1, [](Emulator& e) { ret(e, 1); });
     api(e, "DeleteEnhMetaFile", 1, [](Emulator& e) { ret(e, 1); });

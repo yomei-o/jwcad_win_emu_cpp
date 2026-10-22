@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "emulator.h"
+#include "files.h"
 #include "win32/font.h"
 #include "win32/gui.h"
 
@@ -90,6 +91,14 @@ EM_JS(void, js_persist, (const char* path), {
     } catch (e) {}
 });
 
+// A print job's PDF, sent straight to the page so it can be downloaded.
+EM_JS(void, js_printed, (const char* path), {
+    const p = UTF8ToString(path);
+    try {
+        if (typeof postMessage === 'function') postMessage({type: 'printed', path: p, data: FS.readFile(p)});
+    } catch (e) {}
+});
+
 EM_JS(void, js_status, (const char* s), { if (typeof postMessage === 'function') postMessage({type: 'status', text: UTF8ToString(s)}); });
 
 namespace {
@@ -158,6 +167,7 @@ extern "C" EMSCRIPTEN_KEEPALIVE int jwemu_main(int w, int h) {
     g.translate_input(rs, dummy);
     setenv("JWEMU_REGISTRY", "/persist/registry.txt", 1);
     registry_saved_hook = [](const std::string& path) { js_persist(path.c_str()); };
+    print_done_hook = [](const std::string& guest) { js_printed(FileTable::host_path(guest).c_str()); };
     std::vector<std::string> args = {"C:\\jww\\Jw_win.exe"};
     try {
         js_status("starting");

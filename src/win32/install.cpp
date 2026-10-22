@@ -18,6 +18,7 @@ void install_all(Emulator& e) {
     install_menu(e);
     install_dialog(e);
     install_controls(e);
+    install_print(e);
     install_shell_ole(e);
     install_ansi(e);
 }

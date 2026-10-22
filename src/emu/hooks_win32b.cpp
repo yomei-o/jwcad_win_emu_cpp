@@ -71,7 +71,9 @@ std::string current_directory() {
 
 int make_directory(const std::string& path) {
 #if defined(_WIN32)
-    return _mkdir(FileTable::host_path(path).c_str());
+    // The narrow CRT reads the ANSI code page, not UTF-8.
+    std::u16string w = utf8_to_utf16(FileTable::host_path(path));
+    return _wmkdir(reinterpret_cast<const wchar_t*>(w.c_str()));
 #else
     return mkdir(FileTable::host_path(path).c_str(), 0777);
 #endif
@@ -79,7 +81,8 @@ int make_directory(const std::string& path) {
 
 int remove_directory(const std::string& path) {
 #if defined(_WIN32)
-    return _rmdir(FileTable::host_path(path).c_str());
+    std::u16string w = utf8_to_utf16(FileTable::host_path(path));
+    return _wrmdir(reinterpret_cast<const wchar_t*>(w.c_str()));
 #else
     return rmdir(FileTable::host_path(path).c_str());
 #endif

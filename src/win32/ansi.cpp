@@ -265,7 +265,6 @@ void install_ansi(Emulator& e) {
     api(e, "SetMapperFlags", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "SetTextJustification", 3, [](Emulator& e) { ret(e, 1); });
     api(e, "SetColorAdjustment", 2, [](Emulator& e) { ret(e, 1); });
-    api(e, "StartDocA", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "SelectClipPath", 2, [](Emulator& e) { ret(e, 0); });
 
     // ---- kernel32 ---------------------------------------------------------------------
