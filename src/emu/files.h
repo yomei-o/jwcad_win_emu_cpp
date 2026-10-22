@@ -215,6 +215,8 @@ public:
     // fopen for a guest path (UTF-8), through the wide API on a Windows host,
     // so that a Japanese file name opens there too.
     static std::FILE* fopen_guest(const std::string& guest_path, const char* mode);
+    // fopen for a host path (UTF-8): the wide API on a Windows host.
+    static std::FILE* fopen_host(const std::string& host_path, const char* mode);
 
     // Every open descriptor, for a caller that has to write the table down and
     // build it again later.  A host stream cannot cross to another host, but

@@ -129,6 +129,8 @@ void FileTable::set_drive_c(std::string dir) {
 
 const std::string& FileTable::drive_c() { return g_drive_c; }
 
+std::FILE* FileTable::fopen_host(const std::string& host, const char* mode) { return host_fopen(host, mode); }
+
 std::FILE* FileTable::fopen_guest(const std::string& guest_path, const char* mode) {
     return host_fopen(host_path(guest_path), mode);
 }

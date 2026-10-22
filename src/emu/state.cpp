@@ -119,7 +119,7 @@ private:
 };
 
 bool read_file(const std::string& path, std::vector<uint8_t>& out) {
-    std::FILE* f = std::fopen(path.c_str(), "rb");
+    std::FILE* f = FileTable::fopen_host(path.c_str(), "rb");
     if (!f) return false;
     std::fseek(f, 0, SEEK_END);
     long n = std::ftell(f);
@@ -147,7 +147,7 @@ public:
             // literally finds nothing when the guest has a sysroot, which is
             // how a first attempt carried every page of a 460 MB library it
             // could have left on disk.
-            fp_ = std::fopen(FileTable::host_path(path).c_str(), "rb");
+            fp_ = FileTable::fopen_host(FileTable::host_path(path).c_str(), "rb");
             path_ = path;
         }
         if (!fp_) return false;
@@ -181,7 +181,7 @@ bool Emulator::save_state(const std::string& path) const {
         }
     }
 
-    std::FILE* out = std::fopen(path.c_str(), "wb");
+    std::FILE* out = FileTable::fopen_host(path.c_str(), "wb");
     if (!out) {
         std::fprintf(stderr, "save_state: cannot write %s\n", path.c_str());
         return false;

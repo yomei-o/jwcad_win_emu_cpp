@@ -11,6 +11,7 @@
 #include <cstring>
 #include <map>
 
+#include "files.h"
 #include "hookutil.h"
 
 namespace x86emu::win32 {
@@ -154,7 +155,7 @@ void save_key(FILE* fp, int root, Key* k) {
 void save() {
     Registry& r = reg();
     if (!r.dirty || r.path.empty()) return;
-    FILE* fp = std::fopen(r.path.c_str(), "wb");
+    FILE* fp = x86emu::FileTable::fopen_host(r.path.c_str(), "wb");
     if (!fp) return;
     std::fprintf(fp, "jwemu-registry 1\n");
     for (int i = 0; i < 4; ++i) {
@@ -172,7 +173,7 @@ void load() {
     r.loaded = true;
     const char* env = std::getenv("JWEMU_REGISTRY");
     r.path = env && *env ? env : "jwemu_registry.txt";
-    FILE* fp = std::fopen(r.path.c_str(), "rb");
+    FILE* fp = x86emu::FileTable::fopen_host(r.path.c_str(), "rb");
     if (!fp) return;
     char line[1 << 16];
     Key* cur = nullptr;

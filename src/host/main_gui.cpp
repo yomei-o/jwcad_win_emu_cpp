@@ -100,7 +100,7 @@ bool write_png(const std::string& path, const uint32_t* px, int w, int h) {
     }
     uint32_t adler = (b << 16) | a;
     for (int i = 3; i >= 0; --i) z.push_back(static_cast<uint8_t>(adler >> (i * 8)));
-    FILE* fp = std::fopen(path.c_str(), "wb");
+    FILE* fp = x86emu::FileTable::fopen_host(path.c_str(), "wb");
     if (!fp) return false;
     auto chunk = [&](const char* type, const std::vector<uint8_t>& data) {
         uint8_t len[4] = {static_cast<uint8_t>(data.size() >> 24), static_cast<uint8_t>(data.size() >> 16),
@@ -483,6 +483,22 @@ void install_breaks(Emulator& emu) {
             uint64_t q = emu.mem.read32(p);
             if (q && emu.mem.is_mapped(q)) std::fprintf(stderr, "    [%s] -> \"%s\"\n", names[i], wstr(q).c_str());
         }
+        // JWEMU_BREAK_DOUBLES=-0xc4,-0x108: doubles at those offsets from EBP.
+        if (const char* dv = std::getenv("JWEMU_BREAK_DOUBLES")) {
+            std::string list = dv;
+            size_t at = 0;
+            while (at < list.size()) {
+                size_t comma = list.find(',', at);
+                if (comma == std::string::npos) comma = list.size();
+                long long off = std::strtoll(list.substr(at, comma - at).c_str(), nullptr, 0);
+                uint64_t a = ((r[5] & 0xFFFFFFFF) + static_cast<uint64_t>(off)) & 0xFFFFFFFF;
+                uint64_t raw = static_cast<uint64_t>(emu.mem.read32(a)) | static_cast<uint64_t>(emu.mem.read32(a + 4)) << 32;
+                double v;
+                std::memcpy(&v, &raw, 8);
+                std::fprintf(stderr, "    [ebp%+lld] %.10g\n", off, v);
+                at = comma + 1;
+            }
+        }
         // The first stack arguments, as wide strings.
         for (int k = 0; k < 2; ++k) {
             uint64_t p = emu.mem.read32((r[4] & 0xFFFFFFFF) + 4 * k);
@@ -500,7 +516,7 @@ void install_breaks(Emulator& emu) {
 }
 
 bool dir_exists(const std::string& d) {
-    FILE* fp = std::fopen((d + "/jwsubgothic.ttf").c_str(), "rb");
+    FILE* fp = x86emu::FileTable::fopen_host((d + "/jwsubgothic.ttf").c_str(), "rb");
     if (fp) std::fclose(fp);
     return fp != nullptr;
 }
@@ -580,9 +596,18 @@ int main(int argc, char** argv) {
 
     std::vector<ScriptLine> script;
     if (!script_path.empty()) {
-        std::ifstream in(script_path);
+        // Read whole through the wide API: the path may be Japanese.
+        std::string text;
+        if (FILE* fp = x86emu::FileTable::fopen_host(script_path, "rb")) {
+            char buf[4096];
+            size_t n;
+            while ((n = std::fread(buf, 1, sizeof buf, fp)) > 0) text.append(buf, n);
+            std::fclose(fp);
+        }
+        std::istringstream in(text);
         std::string line;
         while (std::getline(in, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.empty() || line[0] == '#') continue;
             std::istringstream ls(line);
             ScriptLine l;

@@ -1,3 +1,4 @@
+#include "files.h"
 #include "font.h"
 
 #include <algorithm>
@@ -56,7 +57,7 @@ FontFile* load_file(const std::string& name) {
     if (it != files.end()) return it->second->ok ? it->second.get() : nullptr;
     auto f = std::make_unique<FontFile>();
     f->path = g_font_dir + "/" + name;
-    if (FILE* fp = std::fopen(f->path.c_str(), "rb")) {
+    if (FILE* fp = x86emu::FileTable::fopen_host(f->path.c_str(), "rb")) {
         std::fseek(fp, 0, SEEK_END);
         long sz = std::ftell(fp);
         std::fseek(fp, 0, SEEK_SET);

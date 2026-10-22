@@ -15,6 +15,7 @@
 
 #include "digest.h"
 #include "emulator.h"
+#include "files.h"
 #include "guest_printf.h"
 #include "processes.h"
 
@@ -373,14 +374,14 @@ void Emulator::install_cl_hooks() {
     win32("CopyFileW", 3, [](Emulator& e) {
         std::string from = FileTable::host_path(wide_arg(e, e.arg_slot(0)));
         std::string to = FileTable::host_path(wide_arg(e, e.arg_slot(1)));
-        std::FILE* in = std::fopen(from.c_str(), "rb");
+        std::FILE* in = FileTable::fopen_host(from.c_str(), "rb");
         if (!in) {
             e.set_last_error(2);
             e.set_result(0);
             return;
         }
         if (e.arg_slot(2)) {  // bFailIfExists
-            if (std::FILE* probe = std::fopen(to.c_str(), "rb")) {
+            if (std::FILE* probe = FileTable::fopen_host(to.c_str(), "rb")) {
                 std::fclose(probe);
                 std::fclose(in);
                 e.set_last_error(80);  // ERROR_FILE_EXISTS
@@ -388,7 +389,7 @@ void Emulator::install_cl_hooks() {
                 return;
             }
         }
-        std::FILE* out = std::fopen(to.c_str(), "wb");
+        std::FILE* out = FileTable::fopen_host(to.c_str(), "wb");
         if (!out) {
             std::fclose(in);
             e.set_last_error(5);

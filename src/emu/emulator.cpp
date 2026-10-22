@@ -1,4 +1,5 @@
 #include "emulator.h"
+#include "files.h"
 
 #include "guest_printf.h"
 
@@ -1421,7 +1422,7 @@ void Emulator::load(const std::string& path, const std::vector<std::string>& arg
     // said `/opt/thing/prog` would mean the same one.
     std::string inside = FileTable::host_path(path);
     if (inside != path) {
-        std::FILE* f = std::fopen(inside.c_str(), "rb");
+        std::FILE* f = FileTable::fopen_host(inside.c_str(), "rb");
         if (f) {
             std::fclose(f);
             load_bytes(read_file(inside), args);

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "emulator.h"
+#include "files.h"
 
 namespace x86emu {
 namespace {
@@ -118,7 +119,7 @@ std::string Emulator::find_library_file(const std::string& name) const {
     // "C:/..." would be read as a guest path and land inside that folder.
     for (const auto& d : opt_.library_paths) {
         std::string candidate = d + "/" + name;
-        if (std::FILE* f = std::fopen(candidate.c_str(), "rb")) {
+        if (std::FILE* f = FileTable::fopen_host(candidate.c_str(), "rb")) {
             std::fclose(f);
             return candidate;
         }
