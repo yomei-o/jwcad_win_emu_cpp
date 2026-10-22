@@ -141,7 +141,11 @@ cmdcheck の `save_*`・`open_*`・`dxf_*`・`file_batch`・`image_*`・`jwf_*`�
 6. 押下中のツールバーボタン（「／」など）が本物は市松模様、こちらは単色。調べた所：左のパレットは Wine の
    ToolbarWindow32（TBSTYLE_FLAT なし、テーマなし）。Wine は CDIS_CHECKED かつ非 hot のときだけ
    TOOLBAR_DrawPattern（55AA のパターンブラシで PatBlt）を呼ぶが、呼ばれていない＝ボタンが CHECKED になっていない
-   らしい（MFC は DefWindowProc 経由で TB_SETSTATE を送るので JWEMU_TRACE_MSG に出ない）。パターンブラシ自体は正しい。
+   と思ったが、`--script` の `tbstate`（各ツールバーのボタン id:TBSTATE/BTNS）で見るとボタンは CHECKED（0x25）。
+   TOOLBAR_DrawPattern（comctl32 内 0x6009EB63 の PatBlt PATCOPY）も呼ばれている。つまり市松を描いた後に
+   ボタンの絵が不透明に上書きしている。Wine の ImageList は 32bpp のビットマップを add_with_alpha で取り込み、
+   GetDIBits のアルファが 0 ならマスク（ImageList_AddMasked が clrBtnFace で作る）で背景を抜く。
+   次はマスク（色→モノクロ BitBlt）か描画（ImageList_DrawIndirect）のどちらで抜けないかを確かめる。
    TrackMouseEvent（WM_MOUSELEAVE）は実装した
 7. メニューなどの文字幅：本物は Yu Gothic UI。代わりのフォントが横に広い（「ファイル(F)」本物 46px / こちら 60px）
 8. 未実装 import の一覧：`--script` に `4000 dump` の 1 行を書くと `[unimplemented]` で出る。

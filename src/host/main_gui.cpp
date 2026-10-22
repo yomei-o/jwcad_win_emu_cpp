@@ -242,6 +242,25 @@ private:
                 for (const auto& name : g_dump_gui->emu.unimplemented_imports()) std::fprintf(stderr, "[unimplemented] %s\n", name.c_str());
             }
             return false;
+        } else if (l.cmd == "tbstate") {
+            // Each toolbar's buttons as the toolbar itself reports them:
+            // command id, TBSTATE_* and BTNS_* (for comparing pressed looks).
+            if (Gui* g = g_dump_gui) {
+                uint64_t tb = g->emu.heap_alloc(32);
+                for (const auto& [h, w] : g->windows) {
+                    if (!w->cls || w->cls->name != u"TOOLBARWINDOW32") continue;
+                    int n = static_cast<int>(g->send(h, 0x418 /*TB_BUTTONCOUNT*/, 0, 0));
+                    std::fprintf(stderr, "[tbstate] %08X %d buttons:", h, n);
+                    for (int i = 0; i < n; ++i) {
+                        if (!g->send(h, 0x417 /*TB_GETBUTTON*/, static_cast<uint64_t>(i), tb)) continue;
+                        std::fprintf(stderr, " %u:%02X/%02X", g->emu.mem.read32(tb + 4), g->emu.mem.read8(tb + 8),
+                                     g->emu.mem.read8(tb + 9));
+                    }
+                    std::fprintf(stderr, "\n");
+                }
+                g->emu.heap_free(tb);
+            }
+            return false;
         } else if (l.cmd == "quit") {
             finish();
         } else {
