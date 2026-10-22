@@ -171,6 +171,11 @@ T = {
     'file_dialog': [('put', 'tests/io/pic.bmp', 'pic.bmp'), ('menu', '編集'), ('L', (170, 414)), ('wait', 1500),
                     ('L', (68, 88)), ('wait', 2500), ('shot', 'dialog'), ('LL', (440, 399)), ('wait', 2000),
                     ('L', (300, 250)), ('wait', 2000), ('shot', 'placed')],
+    'dxf_save_dll': [('reg', r'Software\Jw_cad\jw_win\DXF', 'DxfOutUseDll', 1), ('menu', 'ファイル'), ('L', (95, 255)),
+                     ('wait', 3000), ('L', (412, 131)), ('wait', 1500), ('text', 'DLL'), ('L', (295, 290)), ('wait', 8000),
+                     ('shot', 'saved')],
+    'dxf_open_dll': [('put', 'tests/io/T_dxf_dll.dxf', 'T_dxf_dll.dxf'), ('menu', 'ファイル'), ('L', (95, 233)), ('wait', 3000),
+                     ('LL', (410, 205)), ('wait', 6000), ('shot', 'opened')],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
     'save_as': [('btn', '保存'), ('wait', 2000), ('shot', 'open')],
     'line_attr': [('btn', '線属性'), ('wait', 1500), ('shot', 'open')],
@@ -279,6 +284,14 @@ def run_test(name, drive):
         f.write(script)
     reg = os.path.join(outdir, 'reg.txt')
     env = dict(os.environ, JWEMU_REGISTRY=reg)
+    # ('reg', key under HKCU, value name, dword): a setting in place before start.
+    seeds = [st for st in T[name] if st[0] == 'reg']
+    if seeds:
+        with open(reg, 'w', encoding='utf-8', newline='\n') as f:
+            f.write('jwemu-registry 1\n')
+            for _, key, value, dword in seeds:
+                f.write(f'K 1 {key}\n')
+                f.write(f'V 4 {value.encode("utf-8").hex()} {int(dword).to_bytes(4, "little").hex()}\n')
     # Each test gets its own C: so saves cannot leak into the next one.
     c = os.path.join(outdir, 'c')
     shutil.copytree(drive, c)
