@@ -2073,6 +2073,9 @@ uint64_t combo_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t l
     };
     switch (msg) {
         case WM_NCCREATE:
+            // As Windows does: border and scroll bar styles belong to the list,
+            // not to the combo box itself.
+            w->style &= ~(WS_BORDER | WS_HSCROLL | WS_VSCROLL);
             def_window_proc(g, hwnd, msg, wp, lp);
             s->drop_h = w->wrect.h();
             return 1;

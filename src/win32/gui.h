@@ -13,6 +13,8 @@
 // what CallWindowProc on a subclassed control does - lands in host code.
 #pragma once
 
+#include <cstdio>
+
 #include <cstdint>
 #include <functional>
 #include <map>
@@ -449,6 +451,8 @@ public:
     Point client_to_screen(const Window* w, Point p) const;
     Point window_to_screen(const Window* w, Point p) const;  // relative to w's window rect
     Rect window_rect_screen(const Window* w) const;
+    // The window tree with screen rectangles, for debugging layout.
+    void dump_windows(std::FILE* f, uint32_t hwnd = 0, int depth = 0) const;
     Rect client_rect_screen(const Window* w) const;
     bool is_visible(const Window* w) const;  // this and every ancestor
     // Offset of a window's client (or window) origin inside its top-level's surface.
@@ -651,6 +655,9 @@ uint32_t create_printer_dc(Gui& g, uint64_t devmode);
 bool is_printer_name(const std::u16string& name);
 uint64_t printer_device_caps(const DC& d, int index);
 void install_print(Emulator& e);
+// uxtheme (theme.cpp): a theme handle for the classes that have one, else 0.
+uint32_t theme_open(const std::u16string& class_list);
+void install_theme(Emulator& e);
 extern std::function<void(const std::string&)> print_done_hook;
 
 // The print / printer-setup dialog (dialog.cpp).  Returns false on cancel.

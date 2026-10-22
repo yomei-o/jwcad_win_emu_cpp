@@ -53,6 +53,13 @@ canvas {
 .box-head span { font-size: 12px; }
 .bar { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
 .bar .path { font: 13px/1.5 ui-monospace, monospace; color: var(--accent); }
+/* The listing scrolls inside the panel, so a full C:\jww does not stretch the page. */
+#filelist { max-height: 22.5rem; overflow-y: auto; scrollbar-color: #4a505c var(--panel); scrollbar-width: thin;
+  border-top: 1px solid #22262e; border-bottom: 1px solid #22262e; }
+#filelist::-webkit-scrollbar { width: 10px; }
+#filelist::-webkit-scrollbar-track { background: var(--panel); }
+#filelist::-webkit-scrollbar-thumb { background: #4a505c; border-radius: 5px; border: 2px solid var(--panel); }
+#filelist::-webkit-scrollbar-thumb:hover { background: #626a78; }
 #files { width: 100%; border-collapse: collapse; }
 #files td { padding: 3px 8px 3px 0; border-top: 1px solid #22262e; }
 #files td.name { font: 13px/1.5 ui-monospace, monospace; word-break: break-all; }
@@ -99,7 +106,7 @@ canvas {
       <button id="up" disabled>上へ</button>
       <span id="path" class="path">C:\jww</span>
     </div>
-    <table id="files"></table>
+    <div id="filelist"><table id="files"></table></div>
     <div class="bar">
       <button id="add" disabled>ファイルを入れる</button>
       <button id="mkdir" disabled>新規フォルダ</button>
@@ -333,8 +340,10 @@ async function start() {
   const winPath = (p) => 'C:' + p.slice(3).replace(/\//g, '\\');
   const fmtSize = (n) => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
   const fmtDate = (t) => { const d = new Date(t); return d.toLocaleDateString('ja-JP') + ' ' + d.toLocaleTimeString('ja-JP', {hour: '2-digit', minute: '2-digit'}); };
+  let shownDir = null;
   function render() {
     $('path').textContent = winPath(cwd);
+    if (shownDir !== cwd) { $('filelist').scrollTop = 0; shownDir = cwd; }
     $('up').disabled = !ready || cwd === ROOT;
     const kids = entries.filter((x) => x.p.slice(0, x.p.lastIndexOf('/')) === cwd)
       .sort((a, b) => (b.dir - a.dir) || a.p.localeCompare(b.p, 'ja'));

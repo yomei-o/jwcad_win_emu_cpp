@@ -137,6 +137,8 @@ struct ScriptLine {
     std::vector<std::string> args;
 };
 
+Gui* g_dump_gui = nullptr;  // for the script's "dump"
+
 class HeadlessHost : public Host {
 public:
     HeadlessHost(std::vector<ScriptLine> script, std::string final_shot, uint64_t run_ms)
@@ -213,6 +215,9 @@ private:
                 write_png(l.args[0], last_.data(), w_, h_);
                 std::fprintf(stderr, "[jwemu] wrote %s\n", l.args[0].c_str());
             }
+            return false;
+        } else if (l.cmd == "dump") {
+            if (g_dump_gui) g_dump_gui->dump_windows(stderr);
             return false;
         } else if (l.cmd == "quit") {
             finish();
@@ -526,6 +531,7 @@ int main(int argc, char** argv) {
     HeadlessHost hh(std::move(script), shot_path, run_ms ? run_ms : (shot_path.empty() ? 0 : 5000));
     Gui& g = gui(emu);
     g.host = &hh;
+    g_dump_gui = &g;
     HostEvent rs;
     rs.type = HostEvent::Resize;
     rs.w = sw;

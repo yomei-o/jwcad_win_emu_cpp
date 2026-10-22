@@ -342,11 +342,19 @@ void install_shell_ole(Emulator& e) {
     api(e, "VariantTimeToSystemTime", 3, [](Emulator& e) { ret(e, 0); });
 
     // ---- uxtheme: themes are off ------------------------------------------------------
-    api(e, "IsAppThemed", 0, [](Emulator& e) { ret(e, 0); });
-    api(e, "IsThemeActive", 0, [](Emulator& e) { ret(e, 0); });
-    api(e, "OpenThemeData", 2, [](Emulator& e) { ret(e, 0); });
-    api(e, "OpenThemeDataEx", 3, [](Emulator& e) { ret(e, 0); });
-    api(e, "OpenThemeDataForDpi", 3, [](Emulator& e) { ret(e, 0); });
+    api(e, "IsAppThemed", 0, [](Emulator& e) { ret(e, 1); });
+    api(e, "IsThemeActive", 0, [](Emulator& e) { ret(e, 1); });
+    // Themes: only the rebar band MFC's control bars draw (theme.cpp); every
+    // other class stays unthemed, so Wine's comctl32 keeps its classic paths.
+    auto open_theme = [](Emulator& e) {
+        std::u16string list = A(e, 1) ? read_wstr(e, A(e, 1)) : u"";
+        uint32_t h = theme_open(list);
+        e.log_call("OpenThemeData(%s) = %08X", to_utf8(list).c_str(), h);
+        ret(e, h);
+    };
+    api(e, "OpenThemeData", 2, open_theme);
+    api(e, "OpenThemeDataEx", 3, open_theme);
+    api(e, "OpenThemeDataForDpi", 3, open_theme);
     api(e, "DrawThemeTextEx", 9, [](Emulator& e) { ret(e, E_FAIL); });
     api(e, "GetThemeBackgroundExtent", 5, [](Emulator& e) { ret(e, E_FAIL); });
     api(e, "GetThemeMargins", 7, [](Emulator& e) { ret(e, E_FAIL); });

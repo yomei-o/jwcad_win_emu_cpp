@@ -875,6 +875,17 @@ void Gui::modal_loop(const std::function<bool()>& done, uint32_t filter_hwnd) {
 // Window creation and placement
 // ---------------------------------------------------------------------------
 
+void Gui::dump_windows(std::FILE* f, uint32_t hwnd, int depth) const {
+    auto it = windows.find(hwnd ? hwnd : desktop);
+    if (it == windows.end()) return;
+    const Window* w = it->second.get();
+    Rect r = window_rect_screen(w);
+    std::fprintf(f, "%*s%08X %-24s %4d,%4d %4dx%-4d st=%08X ex=%08X %s \"%s\"\n", depth * 2, "", w->hwnd,
+                 w->cls ? to_utf8(w->cls->display_name).c_str() : "?", r.l, r.t, r.w(), r.h(), w->style, w->exstyle,
+                 (w->style & WS_VISIBLE) ? "vis" : "hid", to_utf8(w->text).c_str());
+    for (uint32_t c : w->children) dump_windows(f, c, depth + 1);
+}
+
 Rect Gui::nc_insets(uint32_t style, uint32_t exstyle, bool menu, int width) const {
     (void)width;
     Rect r;

@@ -93,6 +93,8 @@ try {
   await sleep(4000);
   const listed = await ev("[...document.querySelectorAll('#files td.name')].map((t) => t.textContent).join(',')");
   check(listed.includes('WINDEPTH.DAT'), 'an uploaded file appears in the panel');
+  check(await ev("(() => { const f = document.getElementById('filelist'); return f.scrollHeight > f.clientHeight + 50 && f.clientHeight < 400; })()"),
+        'the file list scrolls inside the panel');
   console.log('note: ' + await ev("document.getElementById('note').textContent"));
   // Jw_cad's own 開く, a line, then 上書: the saved drawing should come back
   // to the panel marked as the user's (kept in IndexedDB).
