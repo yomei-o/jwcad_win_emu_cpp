@@ -302,6 +302,28 @@ T = {
     # 属変: (L) on a line moves it to the layer being written (書込みレイヤに変更 is on).
     'd_attr_change': [('btn', '属変'), ('L', 'wall_bottom'), ('wait', 1000), ('shot', 'drawn'), ('dxf', 'OUT'),
                       ('expect', {'LINE': 0}), ('expect_diff',)],
+    # 線属性: 線色5 and 点線1, then a line.
+    'd_line_attr': [('btn', '線属性'), ('wait', 1500), ('L', (398, 319)), ('L', (540, 265)), ('L', (512, 469)), ('wait', 800),
+                    ('btn', '／'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'drawn'), ('dxf', 'OUT'),
+                    ('expect', {'LINE': 1, 'LINE/ltDASHED1': 1})],
+    # Layer 1 as the layer written to ((R) on its button; (L) changes how it shows), then a line.
+    'd_layer': [('R', (931, 496)), ('wait', 500), ('btn', '／'), ('L', 'empty1'), ('L', 'empty2'), ('shot', 'drawn'),
+                ('dxf', 'OUT'), ('expect', {'LINE': 1, 'LINE/L_0-1_': 1})],
+    'd_copy_paste': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', 'コピー'), ('wait', 1000),
+                     ('btn', '貼付'), ('wait', 1000), ('L', (250, 250)), ('wait', 1500), ('shot', 'drawn'), ('dxf', 'OUT'),
+                     ('expect_gt', {'LINE': 100})],
+    'd_block_release': [('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800), ('btn', 'BL化'), ('wait', 1500),
+                        ('text', 'HOUSE'), ('key', 13), ('wait', 1500), ('btn', '範囲'), ('L', (360, 370)), ('R', (640, 575)), ('wait', 800),
+                        ('btn', 'BL解'), ('wait', 1500),
+                        ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'INSERT': 0, 'LINE': 0})],
+    # 接円: three lines (the third comes out vertical: 水平・垂直 is on), then the circle touching all three.
+    'd_tangent_circle3': [('btn', '／'), ('L', (150, 200)), ('L', (400, 200)), ('L', (150, 200)), ('L', (150, 450)),
+                          ('L', (400, 200)), ('L', (150, 450)), ('btn', '接円'), ('L', (300, 200)), ('L', (150, 350)),
+                          ('L', (400, 300)), ('wait', 800), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect', {'CIRCLE': 1})],
+    # 曲線 (スプライン): the points it passes through, then 作図実行.  (連結線指定 is for
+    # carrying on from an existing line, not for turning a polyline into a curve.)
+    'd_curve': [('btn', '曲線'), ('L', (150, 200)), ('L', (250, 300)), ('L', (350, 200)), ('L', (450, 300)), ('wait', 500),
+                ('shot', 'picked'), ('L', (555, 88)), ('wait', 1000), ('shot', 'drawn'), ('dxf', 'OUT'), ('expect_gt', {'LINE': 10})],
     'd_auto': [('btn', 'AUTO'), ('L', 'empty1'), ('L', 'empty2'), ('wait', 500), ('shot', 'drawn'), ('dxf', 'OUT'),
                ('expect_diff',)],
     'new': [('btn', '新規'), ('wait', 1500), ('shot', 'open')],
@@ -351,22 +373,38 @@ def expand(steps):
     return out
 
 
-# Entities in a DXF's ENTITIES section, by type.
+# Entities in a DXF's ENTITIES section: by type ("LINE"), and also by type and
+# colour ("LINE/c5"), line type ("LINE/ltDOT") and layer ("LINE/L0-1"), so a
+# test can check what it drew as well as how many.
 def dxf_counts(path):
     import collections
     lines = open(path, 'rb').read().decode('cp932', 'replace').splitlines()
-    codes, values = lines[0::2], lines[1::2]
+    pairs = [(c.strip(), v.strip()) for c, v in zip(lines[0::2], lines[1::2])]
     counts = collections.Counter()
     in_entities = False
     prev = None
-    for code, value in zip(codes, values):
-        code, value = code.strip(), value.strip()
+    ent = None
+
+    def close():
+        if ent:
+            t = ent['type']
+            counts[t] += 1
+            if '62' in ent: counts[f'{t}/c{ent["62"]}'] += 1
+            if '6' in ent: counts[f'{t}/lt{ent["6"]}'] += 1
+            if '8' in ent: counts[f'{t}/L{ent["8"]}'] += 1
+
+    for code, value in pairs:
         if code == '2' and prev == 'SECTION':
             in_entities = value == 'ENTITIES'
         if code == '0':
+            close()
+            ent = None
             if in_entities and value not in ('SECTION', 'ENDSEC', 'EOF', 'SEQEND', 'VERTEX'):
-                counts[value] += 1
+                ent = {'type': value}
             prev = value
+        elif ent is not None and code in ('62', '6', '8') and code not in ent:
+            ent[code] = value
+    close()
     return dict(counts)
 
 
