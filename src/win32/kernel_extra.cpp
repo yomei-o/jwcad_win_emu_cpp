@@ -34,16 +34,16 @@ std::u16string trim(const std::u16string& s) {
     return s.substr(a, b - a);
 }
 
-std::string ini_host_path(const std::u16string& file) {
+std::string ini_guest_path(const std::u16string& file) {
     std::u16string f = file;
     // A bare name lives in the Windows directory; ours is the working directory.
     if (f.find(u'\\') == std::u16string::npos && f.find(u'/') == std::u16string::npos) f = u".\\" + f;
-    return FileTable::host_path(to_utf8(f));
+    return to_utf8(f);
 }
 
 Ini read_ini(const std::u16string& file) {
     Ini ini;
-    FILE* fp = std::fopen(ini_host_path(file).c_str(), "rb");
+    FILE* fp = FileTable::fopen_guest(ini_guest_path(file), "rb");
     if (!fp) return ini;
     std::string data;
     char buf[4096];
@@ -84,7 +84,7 @@ void write_ini(const std::u16string& file, const Ini& ini) {
         for (const auto& [k, v] : keys) text += k + u"=" + v + u"\r\n";
     }
     std::string bytes = utf16_to_cp932(text);
-    FILE* fp = std::fopen(ini_host_path(file).c_str(), "wb");
+    FILE* fp = FileTable::fopen_guest(ini_guest_path(file), "wb");
     if (!fp) return;
     std::fwrite(bytes.data(), 1, bytes.size(), fp);
     std::fclose(fp);
@@ -803,14 +803,17 @@ void install_kernel_extra(Emulator& e) {
     api(e, "UnlockFile", 5, [](Emulator& e) { ret(e, 1); });
     api(e, "LockFileEx", 6, [](Emulator& e) { ret(e, 1); });
     api(e, "UnlockFileEx", 5, [](Emulator& e) { ret(e, 1); });
+    // rename_file and remove_file take guest paths and map them themselves;
+    // mapping here as well put C:\jww\x at <drive>\<drive>\jww\x, and Jw_cad's
+    // ファイル名変更 failed.
     api(e, "MoveFileW", 2, [](Emulator& e) {
-        std::string a = FileTable::host_path(to_utf8(read_wstr(e, A(e, 0))));
-        std::string b = FileTable::host_path(to_utf8(read_wstr(e, A(e, 1))));
+        std::string a = to_utf8(read_wstr(e, A(e, 0)));
+        std::string b = to_utf8(read_wstr(e, A(e, 1)));
         ret(e, FileTable::rename_file(a, b) == 0 ? 1 : 0);
     });
     api(e, "ReplaceFileW", 6, [](Emulator& e) {
-        std::string to = FileTable::host_path(to_utf8(read_wstr(e, A(e, 0))));
-        std::string from = FileTable::host_path(to_utf8(read_wstr(e, A(e, 1))));
+        std::string to = to_utf8(read_wstr(e, A(e, 0)));
+        std::string from = to_utf8(read_wstr(e, A(e, 1)));
         FileTable::remove_file(to);
         ret(e, FileTable::rename_file(from, to) == 0 ? 1 : 0);
     });
@@ -827,7 +830,7 @@ void install_kernel_extra(Emulator& e) {
         write_wstr(e, A(e, 3), name, 260);
         if (!U(e, 2)) {
             // A unique name is also a created, empty file.
-            if (FILE* fp = std::fopen(FileTable::host_path(to_utf8(name)).c_str(), "wb")) std::fclose(fp);
+            if (FILE* fp = FileTable::fopen_guest(to_utf8(name), "wb")) std::fclose(fp);
         }
         ret(e, u & 0xFFFF);
     });

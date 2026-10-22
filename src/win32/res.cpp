@@ -460,7 +460,7 @@ void install_resources(Emulator& e) {
             if (type == 0) {
                 // A .bmp from disk: read it into guest memory and decode.
                 std::string path = to_utf8(read_wstr(e, A(e, 1)));
-                FILE* fp = std::fopen(FileTable::host_path(path).c_str(), "rb");
+                FILE* fp = FileTable::fopen_guest(path, "rb");
                 if (!fp) return ret(e, 0);
                 std::vector<uint8_t> data;
                 uint8_t buf[65536];

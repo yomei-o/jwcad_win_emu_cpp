@@ -212,6 +212,9 @@ public:
     static const std::string& drive_c();
     // Creates a directory (one level) given by a guest path, if it is missing.
     static void ensure_directory(const std::string& guest_path);
+    // fopen for a guest path (UTF-8), through the wide API on a Windows host,
+    // so that a Japanese file name opens there too.
+    static std::FILE* fopen_guest(const std::string& guest_path, const char* mode);
 
     // Every open descriptor, for a caller that has to write the table down and
     // build it again later.  A host stream cannot cross to another host, but

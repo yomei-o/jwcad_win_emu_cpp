@@ -178,11 +178,11 @@ void install_shell_ole(Emulator& e) {
     });
     api(e, "PathFileExistsW", 1, [](Emulator& e) {
         FileTable::Stat st;
-        ret(e, FileTable::stat_path(FileTable::host_path(to_utf8(read_wstr(e, A(e, 0)))), st) == 0 ? 1 : 0);
+        ret(e, FileTable::stat_path(to_utf8(read_wstr(e, A(e, 0))), st) == 0 ? 1 : 0);
     });
     api(e, "PathIsDirectoryW", 1, [](Emulator& e) {
         FileTable::Stat st;
-        bool ok = FileTable::stat_path(FileTable::host_path(to_utf8(read_wstr(e, A(e, 0)))), st) == 0 && st.is_dir;
+        bool ok = FileTable::stat_path(to_utf8(read_wstr(e, A(e, 0))), st) == 0 && st.is_dir;
         ret(e, ok ? 0x10 : 0);
     });
     api(e, "PathAddBackslashW", 1, [](Emulator& e) {
