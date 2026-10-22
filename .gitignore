@@ -5,3 +5,4 @@ dlls/
 jwemu_registry.txt
 tmp/
 !docs/*.png
+__pycache__/

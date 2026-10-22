@@ -281,6 +281,23 @@ void install_kernel_extra(Emulator& e) {
             e.mem.read(src, s.data(), static_cast<uint64_t>(len));
         }
         std::u16string w;
+        // MB_ERR_INVALID_CHARS: fail on bytes that are not valid in the code
+        // page.  Programs detect UTF-8 this way - Jw_cad labels a Shift-JIS
+        // batch file "[UTF-8]" and garbles its comment otherwise.
+        if (cp == 65001 && (U(e, 1) & 0x8)) {
+            size_t i = 0;
+            while (i < s.size()) {
+                unsigned char c = static_cast<unsigned char>(s[i]);
+                int n = c < 0x80 ? 0 : (c & 0xE0) == 0xC0 && c >= 0xC2 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 && c <= 0xF4 ? 3 : -1;
+                bool ok = n >= 0 && i + static_cast<size_t>(n) < s.size() + (n == 0 ? 1 : 0);
+                for (int k = 1; ok && k <= n; ++k) ok = (static_cast<unsigned char>(s[i + k]) & 0xC0) == 0x80;
+                if (!ok) {
+                    e.set_last_error(1113);  // ERROR_NO_UNICODE_TRANSLATION
+                    return ret(e, 0);
+                }
+                i += static_cast<size_t>(n) + 1;
+            }
+        }
         if (cp == 65001) w = utf8_to_utf16(s);
         else if (cp_is_932(cp)) w = cp932_to_utf16(s);
         else for (char c : s) w.push_back(static_cast<char16_t>(static_cast<unsigned char>(c)));

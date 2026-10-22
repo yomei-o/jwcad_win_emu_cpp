@@ -371,6 +371,7 @@ void Emulator::install_file_hooks() {
             default: break;
         }
         int fd = e.files.open(path, f);
+        e.log_call("CreateFile(%s, access %08X, disposition %u) = %d", path.c_str(), access, disposition, fd);
         if (fd < 0) {
             e.report_file_error(fd);
             e.set_last_error(win32_error_for(fd));

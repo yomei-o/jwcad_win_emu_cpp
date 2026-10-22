@@ -2096,6 +2096,21 @@ uint64_t combo_proc(Gui& g, uint32_t hwnd, uint32_t msg, uint64_t wp, uint64_t l
             }
             return 0;
         }
+        case WM_WINDOWPOSCHANGING: {
+            // A drop-down combo box keeps the height of its selection field;
+            // the height a program asks for is how far the list drops (and
+            // Jw_cad moves its combo boxes with that height after creating
+            // them).  WINDOWPOS: cx at +16, cy at +20, flags at +24.
+            if (combo_kind(w) != 1 && lp && !(e.mem.read32(lp + 24) & SWP_NOSIZE)) {
+                int cy = static_cast<int>(e.mem.read32(lp + 20));
+                int h = combo_item_h(g, w) + 6;
+                if (cy != h) {
+                    if (cy > h) s->drop_h = cy - h;
+                    e.mem.write32(lp + 20, static_cast<uint32_t>(h));
+                }
+            }
+            return def_window_proc(g, hwnd, msg, wp, lp);
+        }
         case WM_SIZE:
             if (s->edit) {
                 Window* ew = g.win(s->edit);

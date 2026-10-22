@@ -299,11 +299,93 @@ void install_shell_ole(Emulator& e) {
     api(e, "OleDestroyMenuDescriptor", 1, [](Emulator& e) { ret(e, S_OK); });
     api(e, "OleDuplicateData", 3, [](Emulator& e) { ret(e, 0); });
     api(e, "OleFlushClipboard", 0, [](Emulator& e) { ret(e, S_OK); });
-    api(e, "OleGetClipboard", 1, [](Emulator& e) {
-        if (A(e, 0)) e.mem.write32(A(e, 0), 0);
-        ret(e, E_FAIL);
+    // The OLE clipboard over the plain one.  OleSetClipboard copies out every
+    // format the data object renders into global memory (MFC's
+    // COleDataSource::CacheGlobalData - how Jw_cad copies a drawing), and
+    // OleGetClipboard hands back a data object that reads the same store, so
+    // a paste finds what was copied whichever API it uses.
+    //   IDataObject: 3 GetData, 5 QueryGetData, 8 EnumFormatEtc
+    //   IEnumFORMATETC: 2 Release, 3 Next
+    //   FORMATETC: cfFormat(+0) ptd(+4) dwAspect(+8) lindex(+12) tymed(+16)
+    //   STGMEDIUM: tymed(+0) hGlobal(+4) pUnkForRelease(+8)
+    api(e, "OleSetClipboard", 1, [](Emulator& e) {
+        Gui& g = gui(e);
+        uint64_t obj = A(e, 0);
+        g.clipboard.clear();
+        if (!obj) return ret(e, S_OK);
+        auto method = [&](uint64_t self, int index) { return e.mem.read32(e.mem.read32(self) + index * 4); };
+        uint64_t penum_slot = e.heap_alloc(4), fmt = e.heap_alloc(20), med = e.heap_alloc(12), fetched = e.heap_alloc(4);
+        e.mem.write32(penum_slot, 0);
+        if (e.call_guest(method(obj, 8), {obj, 1 /*DATADIR_GET*/, penum_slot}) == S_OK) {
+            uint64_t penum = e.mem.read32(penum_slot);
+            for (int guard = 0; penum && guard < 64; ++guard) {
+                e.mem.write32(fetched, 0);
+                if (e.call_guest(method(penum, 3), {penum, 1, fmt, fetched}) != S_OK || !e.mem.read32(fetched)) break;
+                uint32_t cf = e.mem.read16(fmt);
+                if (!(e.mem.read32(fmt + 16) & 1)) continue;  // TYMED_HGLOBAL only
+                e.mem.write32(fmt + 16, 1);
+                for (int i = 0; i < 12; i += 4) e.mem.write32(med + i, 0);
+                if (e.call_guest(method(obj, 3), {obj, fmt, med}) != S_OK || e.mem.read32(med) != 1) continue;
+                uint64_t h = e.mem.read32(med + 4);
+                std::vector<uint8_t> data(static_cast<size_t>(h ? e.heap_block_size(h) : 0));
+                if (!data.empty()) e.mem.read(h, data.data(), data.size());
+                g.clipboard[cf] = std::move(data);
+                // ReleaseStgMedium: the owner's Release, or free the memory.
+                if (uint64_t unk = e.mem.read32(med + 8)) e.call_guest(method(unk, 2), {unk});
+                else if (h) e.heap_free(h);
+            }
+            if (penum) e.call_guest(method(penum, 2), {penum});
+        }
+        e.heap_free(penum_slot);
+        e.heap_free(fmt);
+        e.heap_free(med);
+        e.heap_free(fetched);
+        e.log_call("OleSetClipboard: %zu formats", g.clipboard.size());
+        ret(e, S_OK);
     });
-    api(e, "OleSetClipboard", 1, [](Emulator& e) { ret(e, S_OK); });
+    api(e, "OleGetClipboard", 1, [](Emulator& e) {
+        static uint64_t vtbl = 0;
+        if (!vtbl) {
+            auto fixed = [&](const char* name, int nargs, uint32_t result) {
+                return e.add_hook(name, nargs * 4, [result](Emulator& e) { ret(e, result); });
+            };
+            uint64_t qi = e.add_hook("__clip_QueryInterface", 12, [](Emulator& e) {
+                // IUnknown and IDataObject: itself.
+                if (A(e, 2)) e.mem.write32(A(e, 2), U(e, 0));
+                ret(e, S_OK);
+            });
+            uint64_t get_data = e.add_hook("__clip_GetData", 12, [](Emulator& e) {
+                Gui& g = gui(e);
+                uint64_t fmt = A(e, 1), med = A(e, 2);
+                auto it = g.clipboard.find(e.mem.read16(fmt));
+                if (it == g.clipboard.end() || !(e.mem.read32(fmt + 16) & 1)) return ret(e, 0x80040064);  // DV_E_FORMATETC
+                uint64_t h = e.heap_alloc(it->second.empty() ? 1 : it->second.size());
+                if (!it->second.empty()) e.mem.write(h, it->second.data(), it->second.size());
+                e.mem.write32(med, 1);  // TYMED_HGLOBAL
+                e.mem.write32(med + 4, static_cast<uint32_t>(h));
+                e.mem.write32(med + 8, 0);
+                ret(e, S_OK);
+            });
+            uint64_t query = e.add_hook("__clip_QueryGetData", 8, [](Emulator& e) {
+                Gui& g = gui(e);
+                uint64_t fmt = A(e, 1);
+                ret(e, g.clipboard.count(e.mem.read16(fmt)) && (e.mem.read32(fmt + 16) & 1) ? S_OK : S_FALSE);
+            });
+            uint64_t methods[12] = {
+                qi, fixed("__clip_AddRef", 1, 1), fixed("__clip_Release", 1, 0), get_data,
+                fixed("__clip_GetDataHere", 3, E_NOTIMPL), query, fixed("__clip_GetCanonicalFormatEtc", 3, E_NOTIMPL),
+                fixed("__clip_SetData", 4, E_NOTIMPL), fixed("__clip_EnumFormatEtc", 3, E_NOTIMPL),
+                fixed("__clip_DAdvise", 5, E_NOTIMPL), fixed("__clip_DUnadvise", 2, E_NOTIMPL),
+                fixed("__clip_EnumDAdvise", 2, E_NOTIMPL),
+            };
+            vtbl = e.heap_alloc(sizeof methods / 2);
+            for (int i = 0; i < 12; ++i) e.mem.write32(vtbl + i * 4, static_cast<uint32_t>(methods[i]));
+        }
+        uint64_t obj = e.heap_alloc(8);
+        e.mem.write32(obj, static_cast<uint32_t>(vtbl));
+        if (A(e, 0)) e.mem.write32(A(e, 0), static_cast<uint32_t>(obj));
+        ret(e, S_OK);
+    });
     api(e, "OleIsCurrentClipboard", 1, [](Emulator& e) { ret(e, S_FALSE); });
     api(e, "OleLockRunning", 3, [](Emulator& e) { ret(e, S_OK); });
     api(e, "OleQueryCreateFromData", 1, [](Emulator& e) { ret(e, S_FALSE); });

@@ -192,6 +192,8 @@ public:
         uint64_t dev = 1;
     };
     static int stat_path(const std::string& path, Stat& out);
+    // The same for a path already on the host (no drive mapping).
+    static int stat_host(const std::string& host_path, Stat& out);
     int stat_fd(int fd, Stat& out);
 
     // A host path for a guest path.  Windows and Linux guests write paths in

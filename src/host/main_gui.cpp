@@ -40,6 +40,7 @@
 #define UNICODE
 #endif
 #include <windows.h>
+#include <shellapi.h>
 #endif
 
 using namespace x86emu;
@@ -151,24 +152,43 @@ public:
         w_ = w;
         h_ = h;
     }
+    // Script times are on the program's clock, not the wall's: time passes
+    // freely while it waits for input, but a stretch of computation between
+    // two looks at the queue counts for at most 20 ms.  A slow machine, or
+    // several runs at once, then delivers the same events at the same points
+    // in the program - a click is never sent before the window it is meant
+    // for has been drawn.
     bool wait_event(HostEvent& ev, int timeout_ms) override {
+        auto tick = [&] {
+            uint64_t now = wall_ms();
+            vclock_ += std::min<uint64_t>(now - last_call_, 20);
+            last_call_ = now;
+        };
+        tick();
         uint64_t deadline = timeout_ms < 0 ? ~0ull : wall_ms() + static_cast<uint64_t>(timeout_ms);
         while (true) {
-            uint64_t t = wall_ms() - start_;
+            uint64_t t = vclock_;
             if (next_ < script_.size() && script_[next_].at <= t) {
                 ScriptLine& l = script_[next_++];
-                if (translate(l, ev)) return true;
+                if (translate(l, ev)) {
+                    last_call_ = wall_ms();
+                    return true;
+                }
                 continue;
             }
             if (next_ >= script_.size() && run_ms_ && t >= run_ms_) {
                 finish();
             }
             uint64_t now = wall_ms();
-            if (now >= deadline) return false;
-            uint64_t wake = deadline;
-            if (next_ < script_.size()) wake = std::min(wake, start_ + script_[next_].at);
-            if (next_ >= script_.size() && run_ms_) wake = std::min(wake, start_ + run_ms_);
-            if (wake > now) std::this_thread::sleep_for(std::chrono::milliseconds(std::min<uint64_t>(wake - now, 50)));
+            if (now >= deadline) {
+                last_call_ = now;
+                return false;
+            }
+            uint64_t wake = deadline - now;
+            if (next_ < script_.size()) wake = std::min<uint64_t>(wake, script_[next_].at - t);
+            if (next_ >= script_.size() && run_ms_) wake = std::min<uint64_t>(wake, run_ms_ - t);
+            std::this_thread::sleep_for(std::chrono::milliseconds(std::min<uint64_t>(std::max<uint64_t>(wake, 1), 20)));
+            tick();
         }
     }
     void finish() {
@@ -217,7 +237,10 @@ private:
             }
             return false;
         } else if (l.cmd == "dump") {
-            if (g_dump_gui) g_dump_gui->dump_windows(stderr);
+            if (g_dump_gui) {
+                g_dump_gui->dump_windows(stderr);
+                for (const auto& name : g_dump_gui->emu.unimplemented_imports()) std::fprintf(stderr, "[unimplemented] %s\n", name.c_str());
+            }
             return false;
         } else if (l.cmd == "quit") {
             finish();
@@ -234,6 +257,8 @@ private:
     std::string final_shot_;
     uint64_t run_ms_;
     uint64_t start_;
+    uint64_t vclock_ = 0;            // the script's clock (see wait_event)
+    uint64_t last_call_ = wall_ms();
     std::vector<uint32_t> last_;
     int w_ = 0, h_ = 0;
     int pending_up_ = 0;
@@ -414,6 +439,28 @@ bool dir_exists(const std::string& d) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#if defined(_WIN32)
+    // The narrow argv is in the ANSI code page; everything here is UTF-8, so a
+    // Japanese file name on the command line has to come from the wide one.
+    std::vector<std::string> utf8_args;
+    std::vector<char*> utf8_argv;
+    {
+        int wargc = 0;
+        if (wchar_t** wargv = CommandLineToArgvW(GetCommandLineW(), &wargc)) {
+            for (int k = 0; k < wargc; ++k) {
+                int n = WideCharToMultiByte(CP_UTF8, 0, wargv[k], -1, nullptr, 0, nullptr, nullptr);
+                std::string u(n > 0 ? n - 1 : 0, '\0');
+                if (n > 1) WideCharToMultiByte(CP_UTF8, 0, wargv[k], -1, u.data(), n, nullptr, nullptr);
+                utf8_args.push_back(u);
+            }
+            LocalFree(wargv);
+            for (auto& u : utf8_args) utf8_argv.push_back(u.data());
+            utf8_argv.push_back(nullptr);
+            argc = wargc;
+            argv = utf8_argv.data();
+        }
+    }
+#endif
     Emulator::Options opt;
     int sw = 1280, sh = 800;
     bool headless = false;

@@ -131,7 +131,8 @@ std::vector<Emulator::DirectoryEntry> Emulator::list_directory(const std::string
             ec.clear();
         }
         FileTable::Stat st;
-        entry.mtime = FileTable::stat_path(item.path().u8string(), st) == 0 ? st.mtime : 0;
+        // A host path already: stat_path would map C: a second time.
+        entry.mtime = FileTable::stat_host(item.path().u8string(), st) == 0 ? st.mtime : 0;
         found.push_back(std::move(entry));
     }
     // A stable order keeps a guest's output reproducible, which the host's

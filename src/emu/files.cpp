@@ -93,6 +93,33 @@ std::string g_drive_c;
 }  // namespace
 
 void FileTable::set_drive_c(std::string dir) {
+    // Absolute, so it still names the same folder after the guest changes
+    // directory.
+#if defined(_WIN32)
+    std::u16string w16 = utf8_to_utf16(dir);
+    std::wstring w(w16.begin(), w16.end());
+    if (wchar_t* full = _wfullpath(nullptr, w.c_str(), 0)) {
+        std::string out;
+        for (const wchar_t* q = full; *q; ++q) {
+            uint32_t c = static_cast<uint16_t>(*q);
+            if (c >= 0xD800 && c < 0xDC00 && q[1]) c = 0x10000 + ((c - 0xD800) << 10) + (static_cast<uint16_t>(*++q) - 0xDC00);
+            if (c < 0x80) out += static_cast<char>(c);
+            else if (c < 0x800) out += {static_cast<char>(0xC0 | c >> 6), static_cast<char>(0x80 | (c & 0x3F))};
+            else if (c < 0x10000)
+                out += {static_cast<char>(0xE0 | c >> 12), static_cast<char>(0x80 | ((c >> 6) & 0x3F)), static_cast<char>(0x80 | (c & 0x3F))};
+            else
+                out += {static_cast<char>(0xF0 | c >> 18), static_cast<char>(0x80 | ((c >> 12) & 0x3F)),
+                        static_cast<char>(0x80 | ((c >> 6) & 0x3F)), static_cast<char>(0x80 | (c & 0x3F))};
+        }
+        std::free(full);
+        dir = out;
+    }
+#else
+    if (char* full = realpath(dir.c_str(), nullptr)) {
+        dir = full;
+        std::free(full);
+    }
+#endif
     for (char& c : dir)
         if (c == '\\') c = '/';
     while (!dir.empty() && dir.back() == '/') dir.pop_back();
@@ -599,8 +626,9 @@ int FileTable::rename_file(const std::string& from, const std::string& to) {
     return 0;
 }
 
-int FileTable::stat_path(const std::string& path, Stat& out) {
-    std::string host = host_path(path);
+int FileTable::stat_path(const std::string& path, Stat& out) { return stat_host(host_path(path), out); }
+
+int FileTable::stat_host(const std::string& host, Stat& out) {
     x86emu_stat_struct st;
     if (x86emu_stat(host.c_str(), &st) != 0) return from_errno(errno);
     out.size = static_cast<uint64_t>(st.st_size);
