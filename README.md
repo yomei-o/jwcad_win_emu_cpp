@@ -9,8 +9,8 @@ x86 エミュレータで動かすためのリポジトリです。目標は WAS
   メニュー・ダイアログ・標準コントロール）、gdi32（ソフトウェア描画）、レジストリ、
   コードページ 932 など
 * MFC は Jw_win.exe に静的リンクされているのでゲストコードとしてそのまま動く
-* comctl32 は本物の DLL（5.82）をゲストとしてロードする。Microsoft の DLL なので
-  リポジトリには入れず、`tools/build.sh` が手元の `C:\Windows\SysWOW64` からコピーする
+* comctl32 は **Wine 8.0 の comctl32.dll（LGPL）**をゲストとしてそのまま動かす
+  （`dlls_dist/wine/`、出どころとライセンスは同じ場所の README.md）
 * Direct2D / DirectWrite / GDI+ などは「無い」と答える（Jw_cad は GDI 描画に切り替わる）
 
 **状態: メインウィンドウが表示されるところまで。** 本物の Jw_win.exe が起動処理
@@ -33,6 +33,7 @@ sh tools/build.sh                     # -> jwemu.exe（w64devkit の g++、低�
 * `orig/` は Jw_cad の配布物そのまま（著作権は清水治郎・田中善文両氏、使用条件は
   `orig/Jw_win.txt`）
 * `fonts/` は IPAex フォント（IPA Font License）、BIZ UDGothic・Liberation・Carlito（SIL OFL）
+* `dlls_dist/wine/comctl32.dll` は Wine（GNU LGPL 2.1 以降、`dlls_dist/wine/COPYING.LIB`）
 * `src/third_party/libtera/` は libtera の kanji.c（BSD）
 * `src/third_party/stb_truetype.h` は stb（パブリックドメイン / MIT）
 * それ以外のソースは MIT（`LICENSE`）

@@ -316,6 +316,10 @@ void install_shell_ole(Emulator& e) {
     api(e, "IsThemeActive", 0, [](Emulator& e) { ret(e, 0); });
     api(e, "OpenThemeData", 2, [](Emulator& e) { ret(e, 0); });
     api(e, "OpenThemeDataEx", 3, [](Emulator& e) { ret(e, 0); });
+    api(e, "OpenThemeDataForDpi", 3, [](Emulator& e) { ret(e, 0); });
+    api(e, "DrawThemeTextEx", 9, [](Emulator& e) { ret(e, E_FAIL); });
+    api(e, "GetThemeBackgroundExtent", 5, [](Emulator& e) { ret(e, E_FAIL); });
+    api(e, "GetThemeMargins", 7, [](Emulator& e) { ret(e, E_FAIL); });
     api(e, "CloseThemeData", 1, [](Emulator& e) { ret(e, S_OK); });
     api(e, "GetWindowTheme", 1, [](Emulator& e) { ret(e, 0); });
     api(e, "SetWindowTheme", 3, [](Emulator& e) { ret(e, S_OK); });

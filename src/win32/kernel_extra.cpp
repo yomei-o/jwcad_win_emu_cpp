@@ -1031,6 +1031,40 @@ void install_kernel_extra(Emulator& e) {
     });
     api(e, "CheckForReadOnlyResource", 1, [](Emulator& e) { ret(e, 0); });
 
+    // Delay-load imports resolved by the loader on first call (Wine's DLLs use
+    // them for uxtheme and friends).  The descriptor names the DLL and holds
+    // RVAs to its IAT and name table; the thunk being resolved is one IAT slot.
+    api(e, "ResolveDelayLoadedAPI", 6, [](Emulator& e) {
+        uint64_t base = A(e, 0), desc = A(e, 1), thunk = A(e, 4);
+        uint32_t attrs = e.mem.read32(desc);
+        bool rva = (attrs & 1) != 0;  // dlattrRva
+        auto at = [&](uint32_t v) -> uint64_t { return rva ? base + v : v; };
+        std::string dll = e.mem.read_cstring(at(e.mem.read32(desc + 4)));
+        uint64_t hmod_slot = at(e.mem.read32(desc + 8));
+        uint64_t iat = at(e.mem.read32(desc + 12));
+        uint64_t intab = at(e.mem.read32(desc + 16));
+        uint64_t index = (thunk - iat) / 4;
+        uint32_t entry = e.mem.read32(intab + index * 4);
+        uint64_t hmod = e.load_library_for_guest(dll);
+        if (hmod_slot) e.mem.write32(hmod_slot, static_cast<uint32_t>(hmod));
+        uint64_t addr = 0;
+        if (entry & 0x80000000u) {
+            uint32_t ord = entry & 0xFFFF;
+            if (hmod && e.module_for(hmod)) addr = e.find_export_ordinal(hmod, ord);
+            if (!addr) {
+                const char* known = Emulator::well_known_ordinal(dll, ord);
+                addr = e.resolve_import(dll, known ? known : "#" + std::to_string(ord));
+            }
+        } else {
+            std::string name = e.mem.read_cstring(at(entry) + 2);
+            if (hmod && e.module_for(hmod)) addr = e.find_export(hmod, name);
+            if (!addr) addr = e.resolve_import(dll, name);
+        }
+        e.log_call("ResolveDelayLoadedAPI(%s #%llu) = 0x%llX", dll.c_str(), (unsigned long long)index, (unsigned long long)addr);
+        e.mem.write32(thunk, static_cast<uint32_t>(addr));
+        ret(e, addr);
+    });
+
     // The last stop before a C runtime terminates the process: say why, since
     // the program itself will not.
     api(e, "UnhandledExceptionFilter", 1, [](Emulator& e) {
