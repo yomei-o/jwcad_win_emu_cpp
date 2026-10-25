@@ -53,6 +53,20 @@ node tools/test_wasm.mjs          # node でヘッドレスに起動して tmp/w
 node tools/web_test.mjs           # ヘッドレス Chrome で線・アップロード・開く・保存・印刷
 ```
 
+## 速度（JIT）
+
+エミュレータには基本ブロック単位の JIT が入っていて既定で有効です（`X86EMU_JIT=0` で無効）。
+熱くなったブロックは機械語（x86-64 / AArch64）になります（`X86EMU_JIT_NATIVE=0` で無効）。
+`Test7.jww` の読み込み（CPU 時間）は、JIT なし 6.8 秒 → x64 版 1.5 秒 → ARM64 ネイティブ版 0.6 秒です。
+`X86EMU_JIT_VERIFY=1` を付けると全ブロックをインタプリタと突き合わせます。
+
+ARM64 の Windows 機で ARM64 ネイティブ版を作るには llvm-mingw（aarch64）を使います:
+
+```sh
+make OBJ=build/obj_a64 TARGET=jwemu_a64.exe LDFLAGS=-static \
+     CXX=aarch64-w64-mingw32-clang++ CC=aarch64-w64-mingw32-clang
+```
+
 ## ビルドと実行（ネイティブ）
 
 ```sh
