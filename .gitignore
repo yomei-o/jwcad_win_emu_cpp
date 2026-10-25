@@ -6,3 +6,4 @@ jwemu_registry.txt
 tmp/
 !docs/*.png
 __pycache__/
+jwemu_a64.exe
