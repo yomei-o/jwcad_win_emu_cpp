@@ -17,7 +17,7 @@ OBJS = $(patsubst src/%.cpp,$(OBJ)/%.o,$(EMU_SRC) $(GUI_SRC) $(HOST_SRC)) $(pats
 all: jwemu.exe
 
 jwemu.exe: $(OBJS)
-	$(CXX) $(OPT) -o $@ $^ -lgdi32 -luser32 -lshell32
+	$(CXX) $(OPT) -o $@ $^ -lgdi32 -luser32 -lshell32 -lwinmm
 
 $(OBJ)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)

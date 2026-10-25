@@ -532,7 +532,7 @@ uint64_t Emulator::call_guest(uint64_t func, const std::vector<uint64_t>& args) 
     const uint64_t frame_limit = rsp + 8 * args.size() + 64;
     for (;;) {
         try {
-            while (!cpu_->halted && cpu_->rip != nested_return_) cpu_->step_fast();
+            while (!cpu_->halted && cpu_->rip != nested_return_) cpu_->step_fast(nested_return_);
         } catch (const NestedReturn& nr) {
             if (nr.rsp > frame_limit) throw;
         }
@@ -1671,7 +1671,7 @@ Emulator::SliceStatus Emulator::run_slice(uint64_t quantum) {
 
     while (!cpu_->halted && !reschedule_ && cpu_->instructions_executed < deadline) {
         try {
-            if (!(use_jit && cpu_->jit_run_block())) cpu_->step();
+            if (!(use_jit && cpu_->jit_run(deadline, ~0ull, &reschedule_))) cpu_->step();
         } catch (const UnwindTransfer& transfer) {
             // An exception found its handler.  The host frames between the throw
             // and here - nested interpreter loops, one per language handler the

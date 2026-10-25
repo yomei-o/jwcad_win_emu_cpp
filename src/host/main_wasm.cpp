@@ -169,6 +169,8 @@ extern "C" EMSCRIPTEN_KEEPALIVE int jwemu_main(int w, int h) {
     registry_saved_hook = [](const std::string& path) { js_persist(path.c_str()); };
     print_done_hook = [](const std::string& guest) { js_printed(FileTable::host_path(guest).c_str()); };
     std::vector<std::string> args = {"C:\\jww\\Jw_win.exe"};
+    // For measuring: open this drawing at start (JWEMU_ARG=C:\jww\Test7.jww).
+    if (const char* a = std::getenv("JWEMU_ARG")) args.push_back(a);
     try {
         js_status("starting");
         emu.load("C:/jww/Jw_win.exe", args);

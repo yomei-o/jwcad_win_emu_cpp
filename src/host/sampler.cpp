@@ -6,6 +6,7 @@
 // _Exit, which is how both the window and the headless runs end.
 #ifdef _WIN32
 #include <windows.h>
+#include <mmsystem.h>
 
 #include <algorithm>
 #include <atomic>
@@ -48,6 +49,7 @@ void start_sampler() {
     DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &self, 0, FALSE,
                     DUPLICATE_SAME_ACCESS);
     const unsigned long long base = reinterpret_cast<unsigned long long>(GetModuleHandleW(nullptr));
+    timeBeginPeriod(1);
     g_thread = std::thread([self, base] {
         while (!g_stop) {
             Sleep(1);
