@@ -854,12 +854,16 @@ uint64_t Emulator::heap_alloc(uint64_t size) {
     if (size == 0) size = 1;
     uint64_t need = (size + 15) & ~15ull;
 
-    // Reuse a freed block that is big enough before growing the heap.
-    for (auto& [addr, blk] : heap_blocks_) {
-        if (blk.free && blk.size >= need) {
-            blk.free = false;
-            return addr;
-        }
+    // Reuse a freed block that is big enough before growing the heap: the
+    // smallest one that fits.  This used to walk every block ever allocated -
+    // live or free - on each call, which for a program that allocates a few
+    // hundred thousand small objects is most of the run.
+    auto fit = heap_free_.lower_bound(need);
+    if (fit != heap_free_.end()) {
+        uint64_t addr = fit->second;
+        heap_free_.erase(fit);
+        heap_blocks_[addr].free = false;
+        return addr;
     }
     if (heap_next_ + need > heap_limit_) return 0;  // out of memory
     uint64_t addr = heap_next_;
@@ -959,7 +963,10 @@ uint64_t Emulator::set_brk(uint64_t addr) {
 
 void Emulator::heap_free(uint64_t addr) {
     auto it = heap_blocks_.find(addr);
-    if (it != heap_blocks_.end()) it->second.free = true;
+    if (it != heap_blocks_.end() && !it->second.free) {
+        it->second.free = true;
+        heap_free_.emplace(it->second.size, addr);
+    }
 }
 
 uint64_t Emulator::heap_block_size(uint64_t addr) const {
@@ -1820,6 +1827,7 @@ std::unique_ptr<Emulator> Emulator::fork_clone() {
     child->teb_base_ = teb_base_;
     child->brk_ = brk_;
     child->heap_blocks_ = heap_blocks_;
+    child->heap_free_ = heap_free_;
     child->guest_files_ = guest_files_;
     child->guest_file_fds_ = guest_file_fds_;
     child->last_error_ = last_error_;

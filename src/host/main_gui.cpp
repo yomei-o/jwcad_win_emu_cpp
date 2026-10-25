@@ -16,6 +16,8 @@
 // Script lines: "<ms> move X Y", "<ms> down X Y [button]", "<ms> up X Y [button]",
 // "<ms> key VK", "<ms> char TEXT", "<ms> wheel X Y DELTA", "<ms> shot FILE",
 // "<ms> quit".  Times are milliseconds since start.
+void start_sampler();
+void sampler_dump();
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
@@ -197,6 +199,7 @@ public:
             std::fprintf(stderr, "[jwemu] wrote %s\n", final_shot_.c_str());
         }
         std::fflush(stderr);
+        sampler_dump();
         std::_Exit(0);
     }
 
@@ -687,6 +690,7 @@ int main(int argc, char** argv) {
         for (const auto& name : emu.unimplemented_imports()) std::printf("%s\n", name.c_str());
         return 0;
     }
+    start_sampler();
     HeadlessHost hh(std::move(script), shot_path, run_ms ? run_ms : (shot_path.empty() ? 0 : 5000));
     Gui& g = gui(emu);
     g.host = &hh;

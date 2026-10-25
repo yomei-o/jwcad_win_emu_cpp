@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -743,6 +744,7 @@ private:
 
     uint64_t brk_ = 0;
     std::unordered_map<uint64_t, HeapBlock> heap_blocks_;
+    std::multimap<uint64_t, uint64_t> heap_free_;   // size -> address of each freed block
     std::unordered_map<int, uint64_t> guest_files_;   // fd -> guest FILE*
     std::unordered_map<uint64_t, int> guest_file_fds_; // guest FILE* -> fd
     uint64_t last_error_ = 0;

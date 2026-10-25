@@ -9,7 +9,7 @@ OBJ = build/obj
 
 EMU_SRC = $(filter-out src/emu/main.cpp,$(wildcard src/emu/*.cpp)) $(wildcard src/emu/jit/*.cpp)
 GUI_SRC = $(wildcard src/win32/*.cpp)
-HOST_SRC = src/host/main_gui.cpp
+HOST_SRC = src/host/main_gui.cpp src/host/sampler.cpp
 C_SRC = src/third_party/libtera/kanji.c
 
 OBJS = $(patsubst src/%.cpp,$(OBJ)/%.o,$(EMU_SRC) $(GUI_SRC) $(HOST_SRC)) $(patsubst src/%.c,$(OBJ)/%.o,$(C_SRC))
