@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 OUT = os.path.join(ROOT, 'tmp', 'cmd')
-EXE = os.path.join(ROOT, 'jwemu.exe')
+EXE = os.path.join(ROOT, os.environ.get('JWEMU_EXE', 'jwemu.exe'))
 
 # Toolbar buttons, by their label.
 B = {

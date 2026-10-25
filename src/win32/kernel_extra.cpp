@@ -1,6 +1,7 @@
 // kernel32 for a GUI program: the Japanese locale, code page 932, Global and
 // Local memory, atoms, INI files, and the rest of what MFC asks kernel32 that
 // a console program never does.
+#include <cstdlib>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>

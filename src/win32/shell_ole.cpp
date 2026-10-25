@@ -5,6 +5,7 @@
 // Most of these answer the way a machine without the feature would: no
 // themes, no printers, no Direct2D (Jw_cad falls back to GDI), no COM class
 // registrations.  Each answer is one a real Windows can give.
+#include <cstdlib>
 #include <algorithm>
 #include <cstring>
 

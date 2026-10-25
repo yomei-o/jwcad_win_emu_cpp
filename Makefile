@@ -5,7 +5,7 @@ CC ?= gcc
 OPT ?= -O2
 CXXFLAGS = -std=c++17 $(OPT) -Wall -Wextra -Wno-unused-parameter -Isrc -Isrc/emu -Isrc/win32 -Isrc/third_party -Isrc/third_party/libtera -MMD -MP
 CFLAGS = $(OPT) -Isrc/third_party/libtera -MMD -MP
-OBJ = build/obj
+OBJ ?= build/obj
 
 EMU_SRC = $(filter-out src/emu/main.cpp,$(wildcard src/emu/*.cpp)) $(wildcard src/emu/jit/*.cpp)
 GUI_SRC = $(wildcard src/win32/*.cpp)
@@ -14,10 +14,13 @@ C_SRC = src/third_party/libtera/kanji.c
 
 OBJS = $(patsubst src/%.cpp,$(OBJ)/%.o,$(EMU_SRC) $(GUI_SRC) $(HOST_SRC)) $(patsubst src/%.c,$(OBJ)/%.o,$(C_SRC))
 
-all: jwemu.exe
+TARGET ?= jwemu.exe
+LDFLAGS ?=
 
-jwemu.exe: $(OBJS)
-	$(CXX) $(OPT) -o $@ $^ -lgdi32 -luser32 -lshell32 -lwinmm
+all: $(TARGET)
+
+$(TARGET): $(OBJS)
+	$(CXX) $(OPT) $(LDFLAGS) -o $@ $^ -lgdi32 -luser32 -lshell32 -lwinmm
 
 $(OBJ)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)

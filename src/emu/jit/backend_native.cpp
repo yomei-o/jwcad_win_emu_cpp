@@ -17,8 +17,9 @@
 // Exceptions never cross generated frames: the helpers catch whatever the guest raises,
 // remember it, and the generated code checks a flag and leaves; the engine rethrows.
 #include "engine.h"
+#include "native_host.h"
 
-#ifdef __EMSCRIPTEN__
+#if !defined(JIT_NATIVE_X64) && !defined(JIT_NATIVE_A64)
 
 namespace jit {
 bool Engine::native_init() { return false; }
@@ -28,7 +29,7 @@ bool Engine::native_run(Block*, Ctx&, uint64_t, uint32_t*) { return true; }
 void Engine::native_shutdown() {}
 }  // namespace jit
 
-#else
+#elif defined(JIT_NATIVE_X64)
 
 #include "native_gen.h"
 
@@ -580,6 +581,12 @@ void Engine::native_compile(Block* b) {
     for (auto& f : g.stubs) f();
     if (nat_->used + a.b.size() > nat_->cap) { b->nat_failed = true; return; }
     std::memcpy(where, a.b.data(), a.b.size());
+    if (const char* dir = std::getenv(JIT_ENV("JIT_NATIVE_DUMP"))) {   // for the disassembler: one file per block
+        char path[512];
+        std::snprintf(path, sizeof path, "%s/blk_%04llu_%llx.bin", dir, (unsigned long long)n_native_blocks,
+                      (unsigned long long)b->start);
+        if (std::FILE* f = std::fopen(path, "wb")) { std::fwrite(a.b.data(), 1, a.b.size(), f); std::fclose(f); }
+    }
     b->nat = where;
     nat_->used += (a.b.size() + 15) & ~size_t(15);
     ++n_native_blocks;
@@ -587,15 +594,5 @@ void Engine::native_compile(Block* b) {
 
 }  // namespace jit
 
-#else   // no native backend for this host
-
-namespace jit {
-bool Engine::native_init() { return false; }
-void Engine::native_compile(Block*) {}
-void Engine::native_reset() {}
-bool Engine::native_run(Block*, Ctx&, uint64_t, uint32_t*) { return true; }
-void Engine::native_shutdown() {}
-}  // namespace jit
-
 #endif  // JIT_HAVE_NATIVE
-#endif  // __EMSCRIPTEN__
+#endif  // the host

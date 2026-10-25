@@ -56,7 +56,11 @@ void start_sampler() {
             if (SuspendThread(self) == static_cast<DWORD>(-1)) continue;
             CONTEXT ctx;
             ctx.ContextFlags = CONTEXT_CONTROL;
+            #if defined(_M_ARM64) || defined(__aarch64__)
+            if (GetThreadContext(self, &ctx)) ++g_hits[ctx.Pc - base];
+#else
             if (GetThreadContext(self, &ctx)) ++g_hits[ctx.Rip - base];
+#endif
             ResumeThread(self);
         }
     });
