@@ -7,7 +7,7 @@ CXXFLAGS = -std=c++17 $(OPT) -Wall -Wextra -Wno-unused-parameter -Isrc -Isrc/emu
 CFLAGS = $(OPT) -Isrc/third_party/libtera -MMD -MP
 OBJ = build/obj
 
-EMU_SRC = $(filter-out src/emu/main.cpp,$(wildcard src/emu/*.cpp))
+EMU_SRC = $(filter-out src/emu/main.cpp,$(wildcard src/emu/*.cpp)) $(wildcard src/emu/jit/*.cpp)
 GUI_SRC = $(wildcard src/win32/*.cpp)
 HOST_SRC = src/host/main_gui.cpp
 C_SRC = src/third_party/libtera/kanji.c

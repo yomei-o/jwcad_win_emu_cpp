@@ -15,7 +15,7 @@ mkdir -p "$OBJ" "$OUT" dlls
 cp dlls_dist/wine/comctl32.dll dlls/comctl32.dll
 
 FLAGS="-std=c++17 -O2 -fwasm-exceptions -Isrc -Isrc/emu -Isrc/win32 -Isrc/third_party -Isrc/third_party/libtera"
-SRC="$(ls src/emu/*.cpp | grep -v '/main\.cpp$') $(ls src/win32/*.cpp) src/host/main_wasm.cpp"
+SRC="$(ls src/emu/*.cpp src/emu/jit/*.cpp | grep -v '/main\.cpp$') $(ls src/win32/*.cpp) src/host/main_wasm.cpp"
 
 # Compile each file once; only changed ones next time.
 JOBS=${JOBS:-$(( $(nproc) > 2 ? $(nproc) - 1 : 1 ))}
