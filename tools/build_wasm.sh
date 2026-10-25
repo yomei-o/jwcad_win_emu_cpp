@@ -55,6 +55,6 @@ PRELOAD="$PRELOAD --preload-file fonts@/fonts --preload-file dlls@/dlls"
     -sSTACK_SIZE=16MB \
     -sFORCE_FILESYSTEM=1 \
     -sEXPORTED_FUNCTIONS='["_jwemu_main"]' \
-    -sEXPORTED_RUNTIME_METHODS='["FS","ENV","HEAPU8","HEAP32","ccall"]' \
+    -sEXPORTED_RUNTIME_METHODS='["FS","ENV","HEAPU8","HEAP32","ccall","wasmTable","wasmMemory"]' -sALLOW_TABLE_GROWTH=1 \
     $PRELOAD
 ls -l "$OUT"/jwemu.js "$OUT"/jwemu.wasm "$OUT"/jwemu.data

@@ -35,7 +35,7 @@ const Module = await createJwemu({
   locateFile: (p) => path.join(wasmDir, p),
   print: (s) => console.log(s),
   printErr: (s) => console.error(s),
-  preRun: [(M) => { M.ENV.JWEMU_EXIT_AT_IDLE = "1"; for (const k of ["X86EMU_JIT", "X86EMU_JIT_STATS", "X86EMU_JIT_VERIFY", "JWEMU_ARG"]) if (process.env[k]) M.ENV[k] = process.env[k]; if (process.env.JWEMU_TRACE_CALLS) M.ENV.JWEMU_TRACE_CALLS = '1'; }],
+  preRun: [(M) => { M.ENV.JWEMU_EXIT_AT_IDLE = "1"; for (const k of Object.keys(process.env)) if (k.startsWith("X86EMU_") || k === "JWEMU_ARG") M.ENV[k] = process.env[k]; if (process.env.JWEMU_TRACE_CALLS) M.ENV.JWEMU_TRACE_CALLS = '1'; }],
 });
 Module.jwEvents = new Int32Array(new SharedArrayBuffer((16 + 8 * 4096) * 4));
 const FS = Module.FS;
